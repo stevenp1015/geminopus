@@ -1,5 +1,0 @@
-{
-  "name": "Gemini Legion Command & Control kapa",
-  "description": "The Legion Commander's GUI for managing a company of AI Minions. Built on Python ADK, with a React/Next.js frontend.",
-  "requestFramePermissions": []
-}
