@@ -191,9 +191,10 @@ export default function PersonaEditor({ persona, onChange }: PersonaEditorProps)
           className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg
                    text-white focus:border-legion-primary/50 focus:outline-none"
         >
-          <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-          <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-          <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash (Experimental)</option>
+          <option value="gemini-2.5-pro-preview-05-06">Gemini 2.5 Pro Preview 05-06</option>
+          <option value="gemini-2.5-flash-preview-05-20">Gemini 2.5 Flash Preview 05-20</option>
+          <option value="gemini-2.5-flash-preview-04-17">Gemini 2.5 Flash Preview 04-17</option>
+          <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite</option>
         </select>
       </div>
     </div>
