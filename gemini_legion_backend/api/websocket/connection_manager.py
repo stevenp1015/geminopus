@@ -4,14 +4,15 @@ WebSocket handler for real-time communication
 Manages WebSocket connections and real-time updates.
 """
 
-from fastapi import WebSocket
-from typing import Dict, Set, Optional, List
+# fastapi.WebSocket is no longer used directly here.
+from typing import Dict, Set, Optional, List, Callable
 import asyncio
 import logging
-import json
+# import json # Not explicitly used
+import socketio
 from datetime import datetime
 
-from ..schemas import WebSocketMessage, WebSocketCommand
+# ..schemas.WebSocketMessage and WebSocketCommand are no longer used.
 from ....core.dependencies import ServiceContainer
 
 logger = logging.getLogger(__name__)
@@ -21,357 +22,424 @@ class ConnectionManager:
     """Manages WebSocket connections and subscriptions"""
     
     def __init__(self):
-        # Active connections: client_id -> WebSocket
-        self.active_connections: Dict[str, WebSocket] = {}
+        self.sio: Optional[socketio.AsyncServer] = None
         
-        # Channel subscriptions: channel_id -> Set[client_id]
+        # Active connections: sid -> {"client_id": str}
+        self.active_connections: Dict[str, Dict] = {}
+
+        # Channel subscriptions: channel_id -> Set[sid]
         self.channel_subscriptions: Dict[str, Set[str]] = {}
         
-        # Client subscriptions: client_id -> Set[channel_id]
-        self.client_subscriptions: Dict[str, Set[str]] = {}
+        # Client subscriptions: sid -> Set[channel_id] (tracks what a specific SID is subscribed to)
+        self.sid_to_channel_subscriptions: Dict[str, Set[str]] = {}
         
-        # Minion subscriptions: minion_id -> Set[client_id]
+        # Minion subscriptions: minion_id -> Set[sid]
         self.minion_subscriptions: Dict[str, Set[str]] = {}
         
         # Service container (set during app startup)
         self.services: Optional[ServiceContainer] = None
+
+    def set_sio_instance(self, sio_server: socketio.AsyncServer):
+        self.sio = sio_server
+        logger.info("Socket.IO server instance set in ConnectionManager")
     
     def set_services(self, services: ServiceContainer):
         """Set the service container for event broadcasting"""
         self.services = services
         logger.info("Services connected to WebSocket manager")
-    
-    async def connect(self, client_id: str, websocket: WebSocket):
-        """Accept a new WebSocket connection"""
-        await websocket.accept()
-        self.active_connections[client_id] = websocket
-        self.client_subscriptions[client_id] = set()
+
+    async def handle_connect(self, sid: str, client_id: str):
+        """Handle a new Socket.IO connection"""
+        if not self.sio:
+            logger.error("SIO server not initialized in ConnectionManager for handle_connect")
+            return
+
+        self.active_connections[sid] = {"client_id": client_id}
+        self.sid_to_channel_subscriptions[sid] = set()
         
-        logger.info(f"Client {client_id} connected. Total connections: {len(self.active_connections)}")
+        logger.info(f"Client {client_id} (SID: {sid}) connected. Total: {len(self.active_connections)}")
         
         # Send connection confirmation
-        await self.send_personal_message(
-            client_id,
-            {
-                "type": "connection_established",
-                "client_id": client_id,
-                "timestamp": datetime.now().isoformat()
-            }
+        await self.sio.emit(
+            'connection_established',
+            {"client_id": client_id, "sid": sid, "timestamp": datetime.now().isoformat()},
+            room=sid
         )
-    
-    def disconnect(self, client_id: str):
-        """Remove a WebSocket connection"""
-        if client_id in self.active_connections:
-            del self.active_connections[client_id]
-        
-        # Remove from all subscriptions
-        if client_id in self.client_subscriptions:
-            for channel_id in self.client_subscriptions[client_id]:
+
+    async def handle_disconnect(self, sid: str):
+        """Handle a Socket.IO disconnection"""
+        if not self.sio:
+            logger.error("SIO server not initialized in ConnectionManager for handle_disconnect")
+            return
+
+        client_info = self.active_connections.pop(sid, None)
+        client_id = client_info.get("client_id", "Unknown") if client_info else "Unknown"
+
+        # Unsubscribe from all channels this SID was part of
+        if sid in self.sid_to_channel_subscriptions:
+            for channel_id in list(self.sid_to_channel_subscriptions[sid]): # Iterate over a copy
                 if channel_id in self.channel_subscriptions:
-                    self.channel_subscriptions[channel_id].discard(client_id)
-            del self.client_subscriptions[client_id]
+                    self.channel_subscriptions[channel_id].discard(sid)
+                    if not self.channel_subscriptions[channel_id]: # Optional: remove empty channel sets
+                        del self.channel_subscriptions[channel_id]
+                await self.sio.leave_room(sid, channel_id)
+            del self.sid_to_channel_subscriptions[sid]
         
         # Remove from minion subscriptions
-        for minion_id, subscribers in self.minion_subscriptions.items():
-            subscribers.discard(client_id)
-        
-        logger.info(f"Client {client_id} disconnected. Total connections: {len(self.active_connections)}")
+        sids_to_remove_from_minions = []
+        for minion_id, sids in self.minion_subscriptions.items():
+            if sid in sids:
+                sids.discard(sid)
+                if not sids: # Optional: remove minion_id if no SIDs are subscribed
+                    sids_to_remove_from_minions.append(minion_id)
+        for minion_id in sids_to_remove_from_minions:
+            del self.minion_subscriptions[minion_id]
+            # Also leave the Socket.IO room for this minion
+            await self.sio.leave_room(sid, f"minion_{minion_id}")
+
+
+        logger.info(f"Client {client_id} (SID: {sid}) disconnected. Total connections: {len(self.active_connections)}")
     
-    async def send_personal_message(self, client_id: str, message: dict):
-        """Send a message to a specific client"""
-        if client_id in self.active_connections:
-            websocket = self.active_connections[client_id]
+    async def send_personal_message(self, sid: str, message_payload: dict):
+        """Send a message to a specific client by SID"""
+        if not self.sio:
+            logger.error("SIO server not initialized in ConnectionManager for send_personal_message")
+            return
+        if sid in self.active_connections:
+            event_name = message_payload.pop("type", "personal_message")
             try:
-                await websocket.send_json(message)
+                await self.sio.emit(event_name, message_payload, room=sid)
             except Exception as e:
-                logger.error(f"Error sending message to {client_id}: {e}")
-                self.disconnect(client_id)
+                logger.error(f"Error sending personal message to SID {sid}: {e}")
+                # Consider if disconnect logic is needed here for SIO
     
-    async def broadcast_to_channel(self, channel_id: str, message: dict, exclude_client: Optional[str] = None):
-        """Broadcast a message to all clients subscribed to a channel"""
-        if channel_id not in self.channel_subscriptions:
+    async def broadcast_to_channel(self, channel_id: str, message_payload: dict, exclude_sid: Optional[str] = None):
+        """Broadcast a message to all clients subscribed to a channel using Socket.IO"""
+        if not self.sio:
+            logger.error("SIO server not initialized in ConnectionManager for broadcast_to_channel")
+            return
+        # Ensure the channel_id exists and has subscribers (SIDs)
+        if channel_id not in self.channel_subscriptions or not self.channel_subscriptions[channel_id]:
+            # logger.debug(f"No SIDs subscribed to channel {channel_id}, not broadcasting.")
             return
         
-        ws_message = WebSocketMessage(
-            type="channel_message",
-            channel=channel_id,
-            data=message
-        )
-        
-        disconnected = []
-        for client_id in self.channel_subscriptions[channel_id]:
-            if client_id == exclude_client:
-                continue
-            
-            if client_id in self.active_connections:
-                try:
-                    await self.active_connections[client_id].send_json(ws_message.dict())
-                except Exception as e:
-                    logger.error(f"Error broadcasting to {client_id}: {e}")
-                    disconnected.append(client_id)
-        
-        # Clean up disconnected clients
-        for client_id in disconnected:
-            self.disconnect(client_id)
+        event_name = message_payload.pop("type", "channel_message")
+        try:
+            await self.sio.emit(event_name, message_payload, room=channel_id, skip_sid=exclude_sid)
+        except Exception as e:
+            logger.error(f"Error broadcasting to channel {channel_id}: {e}")
     
-    async def broadcast_to_all(self, message: dict):
-        """Broadcast a message to all connected clients"""
-        ws_message = WebSocketMessage(
-            type="broadcast",
-            data=message
-        )
-        
-        disconnected = []
-        for client_id, websocket in self.active_connections.items():
-            try:
-                await websocket.send_json(ws_message.dict())
-            except Exception as e:
-                logger.error(f"Error broadcasting to {client_id}: {e}")
-                disconnected.append(client_id)
-        
-        # Clean up disconnected clients
-        for client_id in disconnected:
-            self.disconnect(client_id)
-    
-    async def subscribe_to_channel(self, client_id: str, channel_id: str):
-        """Subscribe a client to a channel"""
-        if client_id not in self.active_connections:
+    async def broadcast_to_all(self, message_payload: dict):
+        """Broadcast a message to all connected clients using Socket.IO"""
+        if not self.sio:
+            logger.error("SIO server not initialized in ConnectionManager for broadcast_to_all")
             return
         
-        # Add to channel subscriptions
+        event_name = message_payload.pop("type", "global_broadcast")
+        try:
+            await self.sio.emit(event_name, message_payload)
+        except Exception as e:
+            logger.error(f"Error in broadcast_to_all: {e}")
+    
+    async def subscribe_to_channel(self, sid: str, channel_id: str):
+        """Subscribe a client (by SID) to a channel using Socket.IO rooms"""
+        if not self.sio:
+            logger.error("SIO server not initialized for subscribe_to_channel")
+            return
+        if sid not in self.active_connections:
+            logger.warning(f"subscribe_to_channel: SID {sid} not found in active_connections.")
+            return
+
+        await self.sio.enter_room(sid, channel_id)
+        
         if channel_id not in self.channel_subscriptions:
             self.channel_subscriptions[channel_id] = set()
-        self.channel_subscriptions[channel_id].add(client_id)
+        self.channel_subscriptions[channel_id].add(sid)
         
-        # Add to client subscriptions
-        self.client_subscriptions[client_id].add(channel_id)
+        if sid not in self.sid_to_channel_subscriptions:
+             self.sid_to_channel_subscriptions[sid] = set()
+        self.sid_to_channel_subscriptions[sid].add(channel_id)
         
-        logger.info(f"Client {client_id} subscribed to channel {channel_id}")
+        client_info = self.active_connections.get(sid, {})
+        logger.info(f"Client {client_info.get('client_id', sid)} (SID: {sid}) subscribed to channel {channel_id}")
         
-        # Send confirmation
-        await self.send_personal_message(
-            client_id,
-            {
-                "type": "subscription_confirmed",
-                "channel": channel_id,
-                "timestamp": datetime.now().isoformat()
-            }
-        )
-    
-    async def unsubscribe_from_channel(self, client_id: str, channel_id: str):
-        """Unsubscribe a client from a channel"""
-        if client_id not in self.active_connections:
+        try:
+            await self.sio.emit('subscription_confirmed', {"type": "channel", "id": channel_id, "timestamp": datetime.now().isoformat()}, room=sid)
+        except Exception as e:
+            logger.error(f"Error sending channel subscription confirmation to SID {sid}: {e}")
+
+    async def unsubscribe_from_channel(self, sid: str, channel_id: str):
+        """Unsubscribe a client (by SID) from a channel using Socket.IO rooms"""
+        if not self.sio:
+            logger.error("SIO server not initialized for unsubscribe_from_channel")
             return
+        if sid not in self.active_connections:
+            logger.warning(f"unsubscribe_from_channel: SID {sid} not found in active_connections.")
+            return
+
+        await self.sio.leave_room(sid, channel_id)
         
-        # Remove from channel subscriptions
         if channel_id in self.channel_subscriptions:
-            self.channel_subscriptions[channel_id].discard(client_id)
+            self.channel_subscriptions[channel_id].discard(sid)
+            if not self.channel_subscriptions[channel_id]:
+                del self.channel_subscriptions[channel_id]
         
-        # Remove from client subscriptions
-        if client_id in self.client_subscriptions:
-            self.client_subscriptions[client_id].discard(channel_id)
-        
-        logger.info(f"Client {client_id} unsubscribed from channel {channel_id}")
-        
-        # Send confirmation
-        await self.send_personal_message(
-            client_id,
-            {
-                "type": "unsubscription_confirmed",
-                "channel": channel_id,
-                "timestamp": datetime.now().isoformat()
-            }
-        )
-    
-    async def subscribe_to_minion(self, client_id: str, minion_id: str):
-        """Subscribe a client to minion updates"""
-        if client_id not in self.active_connections:
+        if sid in self.sid_to_channel_subscriptions:
+            self.sid_to_channel_subscriptions[sid].discard(channel_id)
+
+        client_info = self.active_connections.get(sid, {})
+        logger.info(f"Client {client_info.get('client_id', sid)} (SID: {sid}) unsubscribed from channel {channel_id}")
+
+        try:
+            await self.sio.emit('unsubscription_confirmed', {"type": "channel", "id": channel_id, "timestamp": datetime.now().isoformat()}, room=sid)
+        except Exception as e:
+            logger.error(f"Error sending channel unsubscription confirmation to SID {sid}: {e}")
+
+    async def subscribe_to_minion(self, sid: str, minion_id: str):
+        """Subscribe a client (by SID) to minion updates using Socket.IO rooms"""
+        if not self.sio:
+            logger.error("SIO server not initialized for subscribe_to_minion")
             return
+        if sid not in self.active_connections:
+            logger.warning(f"subscribe_to_minion: SID {sid} not found in active_connections.")
+            return
+
+        minion_room = f"minion_{minion_id}"
+        await self.sio.enter_room(sid, minion_room)
         
         if minion_id not in self.minion_subscriptions:
             self.minion_subscriptions[minion_id] = set()
-        self.minion_subscriptions[minion_id].add(client_id)
+        self.minion_subscriptions[minion_id].add(sid)
         
-        logger.info(f"Client {client_id} subscribed to minion {minion_id}")
-    
+        client_info = self.active_connections.get(sid, {})
+        logger.info(f"Client {client_info.get('client_id', sid)} (SID: {sid}) subscribed to minion {minion_id}")
+
+        try:
+            await self.sio.emit('subscription_confirmed', {"type": "minion", "id": minion_id, "timestamp": datetime.now().isoformat()}, room=sid)
+        except Exception as e:
+            logger.error(f"Error sending minion subscription confirmation to SID {sid}: {e}")
+
+    async def unsubscribe_from_minion(self, sid: str, minion_id: str):
+        """Unsubscribe a client (by SID) from minion updates using Socket.IO rooms"""
+        if not self.sio:
+            logger.error("SIO server not initialized for unsubscribe_from_minion")
+            return
+        if sid not in self.active_connections:
+            logger.warning(f"unsubscribe_from_minion: SID {sid} not found in active_connections.")
+            return
+
+        minion_room = f"minion_{minion_id}"
+        await self.sio.leave_room(sid, minion_room)
+
+        if minion_id in self.minion_subscriptions:
+            self.minion_subscriptions[minion_id].discard(sid)
+            if not self.minion_subscriptions[minion_id]:
+                del self.minion_subscriptions[minion_id]
+        
+        client_info = self.active_connections.get(sid, {})
+        logger.info(f"Client {client_info.get('client_id', sid)} (SID: {sid}) unsubscribed from minion {minion_id}")
+
+        try:
+            await self.sio.emit('unsubscription_confirmed', {"type": "minion", "id": minion_id, "timestamp": datetime.now().isoformat()}, room=sid)
+        except Exception as e:
+            logger.error(f"Error sending minion unsubscription confirmation to SID {sid}: {e}")
+
     async def broadcast_minion_update(self, minion_id: str, update_type: str, data: dict):
-        """Broadcast updates about a specific minion"""
-        if minion_id not in self.minion_subscriptions:
+        """Broadcast updates about a specific minion using Socket.IO"""
+        if not self.sio:
+            logger.error("SIO server not initialized in ConnectionManager for broadcast_minion_update")
             return
         
-        ws_message = WebSocketMessage(
-            type="minion_update",
-            data={
-                "minion_id": minion_id,
-                "update_type": update_type,
-                **data
-            }
-        )
-        
-        disconnected = []
-        for client_id in self.minion_subscriptions[minion_id]:
-            if client_id in self.active_connections:
-                try:
-                    await self.active_connections[client_id].send_json(ws_message.dict())
-                except Exception as e:
-                    logger.error(f"Error sending minion update to {client_id}: {e}")
-                    disconnected.append(client_id)
-        
-        # Clean up disconnected clients
-        for client_id in disconnected:
-            self.disconnect(client_id)
-    
-    async def handle_command(self, client_id: str, command: WebSocketCommand):
-        """Handle a command from a client"""
+        minion_room = f"minion_{minion_id}"
+        # Ensure the minion_id has subscribers (SIDs)
+        if not self.minion_subscriptions.get(minion_id):
+            # logger.debug(f"No SIDs subscribed to minion {minion_id}, not broadcasting update.")
+            return
+
+        payload = {
+            "minion_id": minion_id,
+            "update_type": update_type,
+            **data
+        }
         try:
-            if command.command == "ping":
-                await self.send_personal_message(
-                    client_id,
-                    {
-                        "type": "pong",
-                        "timestamp": datetime.now().isoformat()
-                    }
-                )
+            await self.sio.emit('minion_update', payload, room=minion_room)
+        except Exception as e:
+            logger.error(f"Error broadcasting minion update for {minion_id} to room {minion_room}: {e}")
+    
+    async def handle_sio_command(self, event_name: str, sid: str, params: Optional[Dict]):
+        """Handle a Socket.IO command from a client by SID"""
+        if not self.sio:
+            logger.error(f"SIO server not initialized for handle_sio_command: {event_name}")
+            return
+        if sid not in self.active_connections:
+            logger.warning(f"handle_sio_command: SID {sid} not found for event {event_name}")
+            return
+
+        client_info = self.active_connections.get(sid, {})
+        client_id_for_log = client_info.get('client_id', sid)
+
+        try:
+            if event_name == "ping":
+                await self.sio.emit('pong', {"timestamp": datetime.now().isoformat()}, room=sid)
             
-            elif command.command == "subscribe_channel":
-                channel_id = command.params.get("channel_id")
+            elif event_name == "subscribe_channel":
+                channel_id = params.get("channel_id") if params else None
                 if channel_id:
-                    await self.subscribe_to_channel(client_id, channel_id)
+                    await self.subscribe_to_channel(sid, channel_id)
+                else:
+                    await self.sio.emit('command_error', {"command": event_name, "message": "channel_id missing"}, room=sid)
             
-            elif command.command == "unsubscribe_channel":
-                channel_id = command.params.get("channel_id")
+            elif event_name == "unsubscribe_channel":
+                channel_id = params.get("channel_id") if params else None
                 if channel_id:
-                    await self.unsubscribe_from_channel(client_id, channel_id)
-            
-            elif command.command == "subscribe_minion":
-                minion_id = command.params.get("minion_id")
+                    await self.unsubscribe_from_channel(sid, channel_id)
+                else:
+                    await self.sio.emit('command_error', {"command": event_name, "message": "channel_id missing"}, room=sid)
+
+            elif event_name == "subscribe_minion":
+                minion_id = params.get("minion_id") if params else None
                 if minion_id:
-                    await self.subscribe_to_minion(client_id, minion_id)
+                    await self.subscribe_to_minion(sid, minion_id)
+                else:
+                    await self.sio.emit('command_error', {"command": event_name, "message": "minion_id missing"}, room=sid)
+
+            elif event_name == "unsubscribe_minion":
+                minion_id = params.get("minion_id") if params else None
+                if minion_id:
+                    await self.unsubscribe_from_minion(sid, minion_id)
+                else:
+                    await self.sio.emit('command_error', {"command": event_name, "message": "minion_id missing"}, room=sid)
             
-            elif command.command == "get_subscriptions":
-                await self.send_personal_message(
-                    client_id,
+            elif event_name == "get_subscriptions":
+                channels = list(self.sid_to_channel_subscriptions.get(sid, set()))
+                minions_subscribed = [m_id for m_id, sids_in_room in self.minion_subscriptions.items() if sid in sids_in_room]
+                await self.sio.emit(
+                    'subscriptions_list',
                     {
-                        "type": "subscriptions",
-                        "channels": list(self.client_subscriptions.get(client_id, set())),
+                        "channels": channels,
+                        "minions": minions_subscribed,
                         "timestamp": datetime.now().isoformat()
-                    }
+                    },
+                    room=sid
                 )
             
             else:
-                logger.warning(f"Unknown command from {client_id}: {command.command}")
-                await self.send_personal_message(
-                    client_id,
-                    {
-                        "type": "error",
-                        "message": f"Unknown command: {command.command}",
-                        "timestamp": datetime.now().isoformat()
-                    }
-                )
+                logger.warning(f"Unknown SIO command: {event_name} from Client {client_id_for_log} (SID: {sid})")
+                await self.sio.emit('command_error', {"command": event_name, "message": "Unknown command"}, room=sid)
         
         except Exception as e:
-            logger.error(f"Error handling command from {client_id}: {e}")
-            await self.send_personal_message(
-                client_id,
-                {
-                    "type": "error",
-                    "message": "Error processing command",
-                    "timestamp": datetime.now().isoformat()
-                }
-            )
-
+            logger.error(f"Error handling SIO command {event_name} from Client {client_id_for_log} (SID: {sid}): {e}")
+            try:
+                await self.sio.emit('command_error', {"command": event_name, "message": "Error processing command"}, room=sid)
+            except Exception as emit_e:
+                 logger.error(f"Failed to send command_error for {event_name} to SID {sid}: {emit_e}")
 
 # Global connection manager instance
 connection_manager = ConnectionManager()    
-    async def broadcast_service_event(self, event_type: str, event_data: dict):
-        """Broadcast a service event to all relevant clients"""
+    async def broadcast_service_event(self, event_name_from_service: str, event_data: dict):
+    async def broadcast_service_event(self, event_name_from_service: str, event_data: dict):
+        """Broadcast a service event to relevant Socket.IO clients/rooms."""
+        if not self.sio:
+            logger.error(f"SIO server not initialized for broadcast_service_event: {event_name_from_service}")
+            return
+
         try:
-            # Handle different types of service events
-            if event_type == "minion_spawned":
-                await self.broadcast_to_all({
-                    "type": "minion_event",
-                    "event": "spawned",
-                    "data": event_data
-                })
+            target_event_name = event_name_from_service
+            target_room = None
+            custom_payload = event_data.copy() # Use a copy to avoid modifying original event_data
+
+            if event_name_from_service == "minion_spawned":
+                # target_event_name is "minion_spawned", broadcast to all
+                pass
             
-            elif event_type == "minion_despawned":
-                await self.broadcast_to_all({
-                    "type": "minion_event",
-                    "event": "despawned",
-                    "data": event_data
-                })
+            elif event_name_from_service == "minion_despawned":
+                # target_event_name is "minion_despawned", broadcast to all
+                pass
             
-            elif event_type == "emotional_state_updated":
+            elif event_name_from_service == "minion_emotional_state_updated": # Changed from "emotional_state_updated"
                 minion_id = event_data.get("minion_id")
                 if minion_id:
-                    await self.broadcast_minion_update(
-                        minion_id,
-                        "emotional_state",
-                        event_data
-                    )
+                    target_room = f"minion_{minion_id}"
+                    # Ensure the event emitted to the client is also "minion_emotional_state_updated"
+                    # The current logic already uses target_event_name which is event_name_from_service here.
+                else:
+                    logger.warning("minion_emotional_state_updated event missing minion_id for room targeting")
+                    return
             
-            elif event_type == "message_sent":
+            elif event_name_from_service == "message_sent":
                 channel_id = event_data.get("channel_id")
                 if channel_id:
-                    await self.broadcast_to_channel(
-                        channel_id,
-                        {
-                            "type": "new_message",
-                            "message": event_data
-                        }
-                    )
+                    target_event_name = "message_sent" # Align with frontend expectation
+                    target_room = channel_id
+                    # custom_payload is already event_data, which is {"channel_id": ..., "message": ...}
+                else:
+                    logger.warning(f"'message_sent' event missing channel_id in payload: {custom_payload}")
+                    return
             
-            elif event_type == "task_created":
-                await self.broadcast_to_all({
-                    "type": "task_event",
-                    "event": "created",
-                    "data": event_data
-                })
+            elif event_name_from_service == "channel_created":
+                # Broadcast to all. custom_payload is {"channel": channel_dict}
+                pass
+
+            elif event_name_from_service == "channel_updated":
+                # Broadcast to all. custom_payload is {"channel_id": ..., "updates": ...}
+                pass
+
+            elif event_name_from_service == "channel_member_added":
+                # Broadcast to all. custom_payload is {"channel_id": ..., "minion_id": ...}
+                pass
             
-            elif event_type == "task_assigned":
-                minion_id = event_data.get("assigned_to")
-                if minion_id:
-                    await self.broadcast_minion_update(
-                        minion_id,
-                        "task_assigned",
-                        event_data
-                    )
+            elif event_name_from_service == "channel_member_removed":
+                # Broadcast to all. custom_payload is {"channel_id": ..., "minion_id": ...}
+                pass
+
+            # Task-related events: These are generally broadcast to all.
+            # The event_name_from_service (e.g., "task_created", "task_updated")
+            # is used directly as the Socket.IO event name.
+            # The event_data from the service is passed as the payload.
+            elif event_name_from_service == "task_created":
+                # Broadcast to all. target_event_name is already event_name_from_service.
+                # custom_payload is already event_data.
+                pass
+
+            elif event_name_from_service == "task_updated":
+                # Broadcast to all.
+                pass
+
+            elif event_name_from_service == "task_assigned":
+                # Broadcast to all. Frontend store will handle updating relevant task and minion.
+                # No specific room needed here based on new requirements.
+                pass
             
-            elif event_type == "task_completed":
-                await self.broadcast_to_all({
-                    "type": "task_event",
-                    "event": "completed",
-                    "data": event_data
-                })
+            elif event_name_from_service == "task_status_changed":
+                # Broadcast to all.
+                pass
+
+            elif event_name_from_service == "task_completed":
+                # Broadcast to all.
+                pass
             
-            elif event_type == "channel_created":
-                await self.broadcast_to_all({
-                    "type": "channel_event",
-                    "event": "created",
-                    "data": event_data
-                })
+            # Channel events are typically broadcast to all as well for now
+            # elif event_name_from_service == "channel_created": # Already handled above
+            #     pass
+
+            elif event_name_from_service == "channel_deleted":
+                # Broadcast to all. custom_payload is {"channel_id": ...}
+                # Clients could be asked to leave this room if they are in it.
+                # Socket.IO server doesn't auto-remove rooms.
+                # Our disconnect logic handles SID leaving rooms.
+                # For now, just broadcast the event.
+                pass
+
+            else:
+                logger.warning(f"Unhandled service event type for Socket.IO broadcast: {event_name_from_service}. Broadcasting as is to all.")
             
-            elif event_type == "channel_deleted":
-                await self.broadcast_to_all({
-                    "type": "channel_event",
-                    "event": "deleted",
-                    "data": event_data
-                })
+            if target_room:
+                await self.sio.emit(target_event_name, custom_payload, room=target_room)
+            else:
+                await self.sio.emit(target_event_name, custom_payload)
                 
         except Exception as e:
-            logger.error(f"Error broadcasting service event {event_type}: {e}")
+            logger.error(f"Error broadcasting service event {event_name_from_service} via Socket.IO: {e}")
     
-    def setup_service_callbacks(self):
-        """Set up callbacks so services can trigger broadcasts"""
-        if not self.services:
-            logger.warning("Cannot set up service callbacks - services not initialized")
-            return
-        
-        # Set up event handlers for each service
-        minion_service = self.services.get_minion_service()
-        task_service = self.services.get_task_service()
-        channel_service = self.services.get_channel_service()
-        
-        # Register callbacks (services would need to support this)
-        # This is a placeholder for now - services would need event emitter support
-        logger.info("Service callbacks configured for WebSocket broadcasting")
+    # def setup_service_callbacks(self): # This method is now obsolete.
+    #     pass

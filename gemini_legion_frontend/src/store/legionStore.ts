@@ -119,7 +119,7 @@ export const useLegionStore = create<LegionState>()(
       
       // WebSocket management
       connectWebSocket: () => {
-        const ws = io(`${WS_BASE_URL}/ws`, {
+        const ws = io(WS_BASE_URL, { // Remove the /ws path
           transports: ['websocket'],
           reconnection: true,
           reconnectionAttempts: 5,
@@ -203,6 +203,17 @@ export const useLegionStore = create<LegionState>()(
             }
           })
         })
+
+        ws.on('channel_deleted', (data: { channel_id: string }) => {
+          if (data && data.channel_id) {
+            import('./chatStore').then(({ useChatStore }) => {
+              useChatStore.getState().removeChannel(data.channel_id);
+            });
+            toast.info(`Channel ${data.channel_id} was deleted.`);
+          } else {
+            console.warn('Received channel_deleted event with missing data:', data);
+          }
+        });
         
         // Task events (forward to task store)
         ws.on('task_created', (data: any) => {

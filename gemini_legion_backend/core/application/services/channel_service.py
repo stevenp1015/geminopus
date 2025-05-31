@@ -13,6 +13,7 @@ from dataclasses import asdict
 import json
 from collections import defaultdict
 
+from ....api.websocket.connection_manager import connection_manager
 from ...domain import (
     Channel,
     ChannelType,
@@ -171,7 +172,12 @@ class ChannelService:
             
             logger.info(f"Created channel: {name} ({channel_id})")
             
-            return self._channel_to_dict(channel)
+            channel_dict = self._channel_to_dict(channel)
+            asyncio.create_task(connection_manager.broadcast_service_event(
+                "channel_created",
+                {"channel": channel_dict}
+            ))
+            return channel_dict
             
         except Exception as e:
             logger.error(f"Failed to create channel {channel_id}: {e}")
@@ -237,7 +243,16 @@ class ChannelService:
         
         logger.info(f"Added {member_id} to channel {channel_id}")
         
-        return self._channel_to_dict(channel)
+        updated_channel_dict = self._channel_to_dict(channel)
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "channel_member_added",
+            {"channel_id": channel_id, "minion_id": member_id}
+        ))
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "channel_updated",
+            {"channel_id": channel_id, "updates": updated_channel_dict}
+        ))
+        return updated_channel_dict
     
     async def remove_member(
         self,
@@ -280,7 +295,16 @@ class ChannelService:
         
         logger.info(f"Removed {member_id} from channel {channel_id}")
         
-        return self._channel_to_dict(channel)
+        updated_channel_dict = self._channel_to_dict(channel)
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "channel_member_removed",
+            {"channel_id": channel_id, "minion_id": member_id}
+        ))
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "channel_updated",
+            {"channel_id": channel_id, "updates": updated_channel_dict}
+        ))
+        return updated_channel_dict
     
     async def send_message(
         self,
@@ -347,7 +371,12 @@ class ChannelService:
         
         logger.debug(f"Message sent to {channel_id} by {sender_id}")
         
-        return self._message_to_dict(message)
+        message_dict = self._message_to_dict(message)
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "message_sent",
+            {"channel_id": channel_id, "message": message_dict}
+        ))
+        return message_dict
     
     async def get_messages(
         self,
@@ -492,7 +521,12 @@ class ChannelService:
         
         logger.info(f"Updated channel {channel_id}")
         
-        return self._channel_to_dict(channel)
+        updated_channel_dict = self._channel_to_dict(channel)
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "channel_updated",
+            {"channel_id": channel_id, "updates": updated_channel_dict}
+        ))
+        return updated_channel_dict
     
     async def delete_channel(
         self,
@@ -542,6 +576,11 @@ class ChannelService:
         
         logger.info(f"Deleted channel {channel_id}")
         
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "channel_deleted",
+            {"channel_id": channel_id}
+        ))
+
         return {
             "channel_id": channel_id,
             "deleted": True,

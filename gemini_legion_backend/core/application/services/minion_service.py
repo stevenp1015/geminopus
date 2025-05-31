@@ -26,6 +26,8 @@ from ...infrastructure.messaging.communication_system import InterMinionCommunic
 from ...infrastructure.messaging.safeguards import CommunicationSafeguards
 from ...infrastructure.persistence.repositories import MinionRepository
 
+from ....api.websocket.connection_manager import connection_manager
+
 
 logger = logging.getLogger(__name__)
 
@@ -148,19 +150,35 @@ class MinionService:
             
             # Log spawn event
             logger.info(f"Spawned Minion: {name} ({minion_id})")
+
+            if minion: # Ensure minion object exists before broadcasting
+                minion_data_for_broadcast = self._minion_to_dict(minion)
+                asyncio.create_task(connection_manager.broadcast_service_event(
+                    "minion_spawned",
+                    {"minion": minion_data_for_broadcast}
+                ))
+                asyncio.create_task(connection_manager.broadcast_service_event(
+                    "minion_status_changed",
+                    {"minion_id": minion_id, "status": minion.status} # Use status from domain object
+                ))
             
             # Return minion details
+            # Ensure the returned status is consistent with what was broadcast
+            current_status = minion.status if minion else "active"
+            spawn_time_iso = minion.spawn_time.isoformat() if minion and hasattr(minion, 'spawn_time') else datetime.now().isoformat()
+            emotional_state_dict = asdict(minion.emotional_state) if minion and minion.emotional_state else None
+
             return {
                 "minion_id": minion_id,
-                "name": name,
-                "status": "active",
-                "personality": base_personality,
-                "quirks": quirks,
-                "spawn_time": datetime.now().isoformat(),
-                "emotional_state": asdict(minion.emotional_state) if minion else None
+                "name": name, # This comes from method args, persona.name would be from minion object
+                "status": current_status,
+                "personality": base_personality, # From method args
+                "quirks": quirks, # From method args
+                "spawn_time": spawn_time_iso,
+                "emotional_state": emotional_state_dict
             }
             
-        except Exception as e:
+        except Exception as e: # This is the correct end of the try-except for spawn_minion
             logger.error(f"Failed to spawn minion {minion_id}: {e}")
             raise
     
@@ -319,7 +337,14 @@ class MinionService:
         # Apply the update
         await agent.emotional_engine.apply_direct_update(current_state)
         
-        return await self.get_emotional_state(minion_id)
+        updated_state_dict = await self.get_emotional_state(minion_id)
+
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "minion_emotional_state_updated",
+            {"minion_id": minion_id, "emotional_state": updated_state_dict}
+        ))
+
+        return updated_state_dict
     
     async def send_command(
         self,
@@ -429,14 +454,26 @@ class MinionService:
         # Update status in repository
         minion = await self.repository.get_by_id(minion_id)
         if minion:
-            minion.status = "inactive"
+            minion.status = "inactive" # Status is set here
             await self.repository.save(minion)
+            minion_name = minion.persona.name if hasattr(minion, 'persona') else minion_id
+        else:
+            minion_name = minion_id # Fallback if minion object not retrieved
+
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "minion_despawned",
+            {"minion_id": minion_id, "minion_name": minion_name}
+        ))
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "minion_status_changed",
+            {"minion_id": minion_id, "status": "inactive"}
+        ))
         
         logger.info(f"Deactivated minion {minion_id}")
         
         return {
             "minion_id": minion_id,
-            "status": "deactivated",
+            "status": "inactive", # This is correct for the return value
             "timestamp": datetime.now().isoformat()
         }
     
