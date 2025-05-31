@@ -496,6 +496,9 @@ class MinionService:
             for minion in minions:
                 try:
                     # Recreate the agent
+                    initial_mood_obj = None
+                    if minion.emotional_state and hasattr(minion.emotional_state, 'mood'):
+                        initial_mood_obj = minion.emotional_state.mood
                     agent = await self.minion_factory.create_minion(
                         minion_id=minion.minion_id,
                         name=minion.persona.name,
@@ -504,11 +507,12 @@ class MinionService:
                         catchphrases=minion.persona.catchphrases,
                         expertise_areas=minion.persona.expertise_areas,
                         allowed_tools=minion.persona.allowed_tools,
-                        initial_mood=minion.emotional_state.mood
+                        initial_mood=initial_mood_obj
                     )
                     
                     # Restore emotional state
-                    await agent.emotional_engine.apply_direct_update(minion.emotional_state)
+                    if minion.emotional_state:
+                        await agent.emotional_engine.apply_direct_update(minion.emotional_state)
                     
                     # Register as active
                     self.active_agents[minion.minion_id] = agent

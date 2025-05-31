@@ -375,7 +375,3 @@ connection_manager = ConnectionManager()
         # Register callbacks (services would need to support this)
         # This is a placeholder for now - services would need event emitter support
         logger.info("Service callbacks configured for WebSocket broadcasting")
-
-
-# Global connection manager instance
-connection_manager = ConnectionManager()
