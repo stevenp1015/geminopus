@@ -136,28 +136,122 @@ export const useLegionStore = create<LegionState>()(
           toast.error('Disconnected from Legion Server')
         })
         
-        ws.on('minion_update', (data: any) => {
-          get().updateMinion(data.minion_id, data.updates)
-        })
-        
-        ws.on('new_message', (data: any) => {
-          get().addMessage(data.channel_id, data.message)
-        })
-        
-        ws.on('channel_update', (data: any) => {
-          get().updateChannel(data.channel_id, data.updates)
-        })
-        
+        // Minion events
         ws.on('minion_spawned', (data: any) => {
           get().addMinion(data.minion)
-          toast.success(`${data.minion.persona.name} has joined the Legion!`)
+          toast.success(`${data.minion.name} has joined the Legion!`)
         })
         
-        ws.on('task_update', (data: any) => {
-          // Forward to task store
-          if (window.__taskStore?.handleTaskUpdate) {
-            window.__taskStore.handleTaskUpdate(data.task)
-          }
+        ws.on('minion_despawned', (data: any) => {
+          get().removeMinion(data.minion_id)
+          toast.info(`${data.minion_name} has left the Legion`)
+        })
+        
+        ws.on('minion_emotional_state_updated', (data: any) => {
+          get().updateMinion(data.minion_id, { 
+            emotional_state: data.emotional_state 
+          })
+        })
+        
+        ws.on('minion_status_changed', (data: any) => {
+          get().updateMinion(data.minion_id, { 
+            status: data.status 
+          })
+        })
+        
+        // Message events (forward to chat store)
+        ws.on('message_sent', (data: any) => {
+          // Import chat store dynamically to avoid circular dependency
+          import('./chatStore').then(({ useChatStore }) => {
+            useChatStore.getState().handleNewMessage(data.channel_id, data.message)
+          })
+        })
+        
+        // Channel events (forward to chat store)
+        ws.on('channel_created', (data: any) => {
+          import('./chatStore').then(({ useChatStore }) => {
+            useChatStore.getState().addChannel(data.channel)
+          })
+        })
+        
+        ws.on('channel_updated', (data: any) => {
+          import('./chatStore').then(({ useChatStore }) => {
+            useChatStore.getState().handleChannelUpdate(data.channel_id, data.updates)
+          })
+        })
+        
+        ws.on('channel_member_added', (data: any) => {
+          import('./chatStore').then(({ useChatStore }) => {
+            const chatStore = useChatStore.getState()
+            const channel = chatStore.channels[data.channel_id]
+            if (channel) {
+              chatStore.updateChannel(data.channel_id, {
+                members: [...channel.members, data.minion_id]
+              })
+            }
+          })
+        })
+        
+        ws.on('channel_member_removed', (data: any) => {
+          import('./chatStore').then(({ useChatStore }) => {
+            const chatStore = useChatStore.getState()
+            const channel = chatStore.channels[data.channel_id]
+            if (channel) {
+              chatStore.updateChannel(data.channel_id, {
+                members: channel.members.filter(id => id !== data.minion_id)
+              })
+            }
+          })
+        })
+        
+        // Task events (forward to task store)
+        ws.on('task_created', (data: any) => {
+          import('./taskStore').then(({ useTaskStore }) => {
+            useTaskStore.getState().handleTaskUpdate(data.task)
+          })
+        })
+        
+        ws.on('task_updated', (data: any) => {
+          import('./taskStore').then(({ useTaskStore }) => {
+            useTaskStore.getState().handleTaskUpdate(data.task)
+          })
+        })
+        
+        ws.on('task_status_changed', (data: any) => {
+          import('./taskStore').then(({ useTaskStore }) => {
+            const taskStore = useTaskStore.getState()
+            const task = taskStore.tasks.find(t => t.task_id === data.task_id)
+            if (task) {
+              taskStore.handleTaskUpdate({ ...task, status: data.status })
+            }
+          })
+        })
+        
+        ws.on('task_assigned', (data: any) => {
+          import('./taskStore').then(({ useTaskStore }) => {
+            const taskStore = useTaskStore.getState()
+            const task = taskStore.tasks.find(t => t.task_id === data.task_id)
+            if (task) {
+              taskStore.handleTaskUpdate({ 
+                ...task, 
+                assigned_to: [...task.assigned_to, data.minion_id]
+              })
+            }
+          })
+          toast.info(`Task assigned to ${data.minion_id}`)
+        })
+        
+        ws.on('task_completed', (data: any) => {
+          import('./taskStore').then(({ useTaskStore }) => {
+            useTaskStore.getState().handleTaskUpdate(data.task)
+          })
+          toast.success(`Task "${data.task.title}" completed!`)
+        })
+        
+        ws.on('task_deleted', (data: any) => {
+          import('./taskStore').then(({ useTaskStore }) => {
+            useTaskStore.getState().handleTaskDeleted(data.task_id)
+          })
         })
         
         set({ websocket: ws })
@@ -212,9 +306,32 @@ export const useLegionStore = create<LegionState>()(
       
       spawnMinion: async (config: any) => {
         try {
-          const minion = await minionApi.create(config)
+          // Call the /spawn endpoint with the correct payload structure
+          const response = await fetch(`${WS_BASE_URL}/api/minions/spawn`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              name: config.name,
+              personality: config.base_personality || config.personality,
+              quirks: config.quirks || [],
+              catchphrases: config.catchphrases || [],
+              expertise: config.expertise_areas || config.expertise || [],
+              tools: config.allowed_tools || config.tools || []
+            })
+          })
+          
+          if (!response.ok) {
+            throw new Error(`Failed to spawn minion: ${response.statusText}`)
+          }
+          
+          const result = await response.json()
+          
+          // Fetch the newly created minion
+          const minion = await minionApi.get(result.id)
           get().addMinion(minion)
-          toast.success(`Spawned ${minion.persona.name}!`)
+          toast.success(`Spawned ${config.name}! ${result.message}`)
         } catch (error) {
           console.error('Failed to spawn minion:', error)
           toast.error('Failed to spawn minion')
@@ -224,11 +341,24 @@ export const useLegionStore = create<LegionState>()(
       
       sendMessage: async (channelId: string, minionId: string, content: string) => {
         try {
-          const message = await channelApi.sendMessage(channelId, {
-            sender_id: minionId,
-            content
+          // Use the minion's send-message endpoint
+          const response = await fetch(`${WS_BASE_URL}/api/minions/${minionId}/send-message`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              channel: channelId,
+              message: content
+            })
           })
-          get().addMessage(channelId, message)
+          
+          if (!response.ok) {
+            throw new Error(`Failed to send message: ${response.statusText}`)
+          }
+          
+          // The message will come through WebSocket events
+          toast.success('Message sent!')
         } catch (error) {
           console.error('Failed to send message:', error)
           toast.error('Failed to send message')
@@ -250,8 +380,22 @@ export const useLegionStore = create<LegionState>()(
       
       updateMinionEmotionalState: async (minionId: string, state: any) => {
         try {
-          const updatedState = await minionApi.updateState(minionId, state)
-          get().updateMinion(minionId, { emotional_state: updatedState })
+          // Use the update-emotional-state endpoint
+          const response = await fetch(`${WS_BASE_URL}/api/minions/${minionId}/update-emotional-state`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(state)
+          })
+          
+          if (!response.ok) {
+            throw new Error(`Failed to update emotional state: ${response.statusText}`)
+          }
+          
+          // Fetch the updated minion to get the new state
+          const minion = await minionApi.get(minionId)
+          get().updateMinion(minionId, minion)
           toast.success('Emotional state updated!')
         } catch (error) {
           console.error('Failed to update emotional state:', error)

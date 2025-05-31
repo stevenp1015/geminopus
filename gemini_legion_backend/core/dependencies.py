@@ -9,15 +9,15 @@ from typing import Optional
 import logging
 from pathlib import Path
 
-from ..infrastructure.persistence.repositories.memory import (
+from .infrastructure.persistence.repositories.memory import (
     ChannelRepositoryMemory,
     MessageRepositoryMemory,
     MinionRepositoryMemory,
     TaskRepositoryMemory
 )
-from ..infrastructure.messaging.communication_system import InterMinionCommunicationSystem
+from .infrastructure.messaging.communication_system import InterMinionCommunicationSystem
 from ..infrastructure.messaging.safeguards import CommunicationSafeguards
-from ..application.services import (
+from .application.services import (
     MinionService,
     TaskService,
     ChannelService
