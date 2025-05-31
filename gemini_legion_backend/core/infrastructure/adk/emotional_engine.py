@@ -15,7 +15,7 @@ from enum import Enum
 
 from google.adk.agents import LlmAgent
 
-from ...core.domain import (
+from ...domain import (
     EmotionalState,
     EmotionalStateUpdate,
     MoodVector,

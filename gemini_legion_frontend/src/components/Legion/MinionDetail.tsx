@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion'
-import { Brain, Zap, Activity, Heart, Shield, Star, Tag, Tool, Quote, Clock } from 'lucide-react'
+import { Brain, Zap, Activity, Heart, Shield, Star, Tag, Wrench, Quote } from 'lucide-react'
 import { format } from 'date-fns'
-import { Minion } from '../../store/legionStore'
+import { Minion } from '../../types'
 import clsx from 'clsx'
 
 interface MinionDetailProps {
@@ -147,7 +147,7 @@ const MinionDetail = ({ minion }: MinionDetailProps) => {
         <div>
           <h3 className="text-lg font-semibold text-white mb-2">Quirks</h3>
           <div className="space-y-1">
-            {minion.persona.quirks.map((quirk, index) => (
+            {minion.persona.quirks.map((quirk: string, index: number) => (
               <div key={index} className="flex items-start space-x-2">
                 <Tag className="w-3 h-3 text-legion-accent mt-1 flex-shrink-0" />
                 <p className="text-sm text-gray-300">{quirk}</p>
@@ -162,7 +162,7 @@ const MinionDetail = ({ minion }: MinionDetailProps) => {
         <div>
           <h3 className="text-lg font-semibold text-white mb-2">Catchphrases</h3>
           <div className="space-y-1">
-            {minion.persona.catchphrases.map((phrase, index) => (
+            {minion.persona.catchphrases.map((phrase: string, index: number) => (
               <div key={index} className="flex items-start space-x-2">
                 <Quote className="w-3 h-3 text-legion-primary mt-1 flex-shrink-0" />
                 <p className="text-sm text-gray-300 italic">"{phrase}"</p>
@@ -177,9 +177,9 @@ const MinionDetail = ({ minion }: MinionDetailProps) => {
         <div>
           <h3 className="text-lg font-semibold text-white mb-2">Allowed Tools</h3>
           <div className="flex flex-wrap gap-2">
-            {minion.persona.allowed_tools.map((tool, index) => (
+            {minion.persona.allowed_tools.map((tool: string, index: number) => (
               <div key={index} className="flex items-center space-x-1 bg-legion-primary/20 px-2 py-1 rounded-md">
-                <Tool className="w-3 h-3 text-legion-primary" />
+                <Wrench className="w-3 h-3 text-legion-primary" />
                 <span className="text-xs text-gray-300">{tool}</span>
               </div>
             ))}

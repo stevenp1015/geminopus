@@ -15,7 +15,7 @@ import os
 from datetime import datetime
 
 # API routers
-from .api.rest.endpoints import health, minions, channels
+from .api.rest.endpoints import health_router, minions_router, channels_router, tasks_router
 
 # WebSocket management
 from .api.websocket import connection_manager
@@ -24,9 +24,7 @@ from .api.websocket import connection_manager
 from .api.rest.schemas import WebSocketMessage, WebSocketCommand
 
 # Core systems
-from .core.infrastructure.adk.agents import MinionFactory
-from .core.infrastructure.messaging.communication_system import InterMinionCommunicationSystem
-from .core.infrastructure.messaging.safeguards import CommunicationSafeguards
+from .core.dependencies import initialize_services, shutdown_services, get_service_container
 
 # Configure logging
 logging.basicConfig(
@@ -42,19 +40,14 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("🚀 Gemini Legion Backend starting...")
     
-    # Initialize shared systems
-    app.state.comm_system = InterMinionCommunicationSystem()
-    app.state.safeguards = CommunicationSafeguards()
+    # Initialize all services
+    await initialize_services()
     
-    # Initialize minion factory
-    app.state.minion_factory = MinionFactory(
-        comm_system=app.state.comm_system,
-        safeguards=app.state.safeguards
-    )
+    # Store service container in app state for easy access
+    app.state.services = get_service_container()
     
-    # Initialize default channels (handled in channels endpoint)
-    from .api.rest.endpoints.channels import init_default_channels
-    init_default_channels()
+    # Set up WebSocket manager with services
+    connection_manager.set_services(app.state.services)
     
     logger.info("✅ Gemini Legion Backend initialized")
     
@@ -63,13 +56,8 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("🛑 Gemini Legion Backend shutting down...")
     
-    # Shutdown all minions
-    try:
-        await app.state.minion_factory.shutdown_all()
-    except Exception as e:
-        logger.error(f"Error shutting down minions: {e}")
-    
-    # Connection manager will handle WebSocket cleanup
+    # Shutdown all services
+    await shutdown_services()
     
     logger.info("👋 Gemini Legion Backend shutdown complete")
 
@@ -101,9 +89,10 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(health.router)
-app.include_router(minions.router)
-app.include_router(channels.router)
+app.include_router(health_router)
+app.include_router(minions_router)
+app.include_router(channels_router)
+app.include_router(tasks_router)
 
 # Mount static files if they exist
 static_dir = os.path.join(os.path.dirname(__file__), "static")
@@ -177,24 +166,27 @@ async def periodic_health_check():
     """Periodic health check and monitoring"""
     while True:
         try:
-            # Check minion health
-            factory = app.state.minion_factory
-            for minion_id in factory.list_minions():
-                minion = factory.get_minion(minion_id)
-                if minion:
-                    # Check if minion needs emotional state update
-                    emotional_state = minion.emotional_engine.get_current_state()
-                    
-                    # Broadcast if stress is high
-                    if emotional_state.stress_level > 0.8:
-                        await broadcast_minion_update(
-                            minion_id,
-                            "high_stress",
-                            {
-                                "stress_level": emotional_state.stress_level,
-                                "mood": emotional_state.mood.to_dict()
-                            }
-                        )
+            # Get services
+            services = get_service_container()
+            minion_service = services.get_minion_service()
+            
+            # Check all minions
+            minions = await minion_service.list_minions()
+            for minion_data in minions:
+                minion_id = minion_data["minion_id"]
+                emotional_state = minion_data.get("emotional_state", {})
+                
+                # Broadcast if stress is high
+                stress_level = emotional_state.get("stress_level", 0.0)
+                if stress_level > 0.8:
+                    await broadcast_minion_update(
+                        minion_id,
+                        "high_stress",
+                        {
+                            "stress_level": stress_level,
+                            "mood": emotional_state.get("mood", {})
+                        }
+                    )
             
             await asyncio.sleep(30)  # Check every 30 seconds
             

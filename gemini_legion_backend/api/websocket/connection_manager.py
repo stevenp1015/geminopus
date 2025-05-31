@@ -12,6 +12,7 @@ import json
 from datetime import datetime
 
 from ..schemas import WebSocketMessage, WebSocketCommand
+from ....core.dependencies import ServiceContainer
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,14 @@ class ConnectionManager:
         
         # Minion subscriptions: minion_id -> Set[client_id]
         self.minion_subscriptions: Dict[str, Set[str]] = {}
+        
+        # Service container (set during app startup)
+        self.services: Optional[ServiceContainer] = None
+    
+    def set_services(self, services: ServiceContainer):
+        """Set the service container for event broadcasting"""
+        self.services = services
+        logger.info("Services connected to WebSocket manager")
     
     async def connect(self, client_id: str, websocket: WebSocket):
         """Accept a new WebSocket connection"""
@@ -270,6 +279,102 @@ class ConnectionManager:
                     "timestamp": datetime.now().isoformat()
                 }
             )
+
+
+# Global connection manager instance
+connection_manager = ConnectionManager()    
+    async def broadcast_service_event(self, event_type: str, event_data: dict):
+        """Broadcast a service event to all relevant clients"""
+        try:
+            # Handle different types of service events
+            if event_type == "minion_spawned":
+                await self.broadcast_to_all({
+                    "type": "minion_event",
+                    "event": "spawned",
+                    "data": event_data
+                })
+            
+            elif event_type == "minion_despawned":
+                await self.broadcast_to_all({
+                    "type": "minion_event",
+                    "event": "despawned",
+                    "data": event_data
+                })
+            
+            elif event_type == "emotional_state_updated":
+                minion_id = event_data.get("minion_id")
+                if minion_id:
+                    await self.broadcast_minion_update(
+                        minion_id,
+                        "emotional_state",
+                        event_data
+                    )
+            
+            elif event_type == "message_sent":
+                channel_id = event_data.get("channel_id")
+                if channel_id:
+                    await self.broadcast_to_channel(
+                        channel_id,
+                        {
+                            "type": "new_message",
+                            "message": event_data
+                        }
+                    )
+            
+            elif event_type == "task_created":
+                await self.broadcast_to_all({
+                    "type": "task_event",
+                    "event": "created",
+                    "data": event_data
+                })
+            
+            elif event_type == "task_assigned":
+                minion_id = event_data.get("assigned_to")
+                if minion_id:
+                    await self.broadcast_minion_update(
+                        minion_id,
+                        "task_assigned",
+                        event_data
+                    )
+            
+            elif event_type == "task_completed":
+                await self.broadcast_to_all({
+                    "type": "task_event",
+                    "event": "completed",
+                    "data": event_data
+                })
+            
+            elif event_type == "channel_created":
+                await self.broadcast_to_all({
+                    "type": "channel_event",
+                    "event": "created",
+                    "data": event_data
+                })
+            
+            elif event_type == "channel_deleted":
+                await self.broadcast_to_all({
+                    "type": "channel_event",
+                    "event": "deleted",
+                    "data": event_data
+                })
+                
+        except Exception as e:
+            logger.error(f"Error broadcasting service event {event_type}: {e}")
+    
+    def setup_service_callbacks(self):
+        """Set up callbacks so services can trigger broadcasts"""
+        if not self.services:
+            logger.warning("Cannot set up service callbacks - services not initialized")
+            return
+        
+        # Set up event handlers for each service
+        minion_service = self.services.get_minion_service()
+        task_service = self.services.get_task_service()
+        channel_service = self.services.get_channel_service()
+        
+        # Register callbacks (services would need to support this)
+        # This is a placeholder for now - services would need event emitter support
+        logger.info("Service callbacks configured for WebSocket broadcasting")
 
 
 # Global connection manager instance

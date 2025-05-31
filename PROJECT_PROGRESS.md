@@ -73,15 +73,23 @@ This document tracks the high-level progress of Project Gemini Legion against th
 
 ## Phase 6: Production Features (Weeks 11-12)
 
-- [ ] PENDING: **Application Layer (Services/Use Cases)**
-    - [ ] Implement minion_service.py (mediates between API and domain)
-    - [ ] Implement task_service.py (handles task orchestration)
-    - [ ] Implement channel_service.py (manages communication)
+- [x] COMPLETE: **Application Layer (Services/Use Cases)**
+    - [x] Implement minion_service.py (comprehensive service with spawn, emotional updates, task management)
+    - [x] Implement task_service.py (full task lifecycle with decomposition and assignment)
+    - [x] Implement channel_service.py (complete channel management with real-time messaging)
+- [>] IN PROGRESS: **Persistence Layer**
+    - [x] Define repository interfaces (base, channel, message, minion, task)
+    - [x] Implement memory-based repositories (for testing and development)
+    - [ ] Implement database repositories (MongoDB/PostgreSQL)
+    - [ ] Add migration system
+- [>] IN PROGRESS: **API Integration**
+    - [ ] Wire API endpoints to use application services
+    - [ ] Implement WebSocket event broadcasting
+    - [ ] Add request validation and error handling
 - [ ] PENDING: **Scalability**
     - [ ] Implement distributed state (Redis, MongoDB etc. as per design)
     - [ ] Add caching layers
     - [ ] Create monitoring system
-    - [ ] Add persistent storage for Channels
 - [ ] PENDING: **Resilience**
     - [ ] Add circuit breakers
     - [ ] Implement retry policies

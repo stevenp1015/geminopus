@@ -4,11 +4,11 @@ Core Emotional State for Minions
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 from .base_types import EntityType
 from .mood import MoodVector
 from .opinion import OpinionScore
-
+    
 
 @dataclass
 class ResponseTendency:
@@ -46,7 +46,6 @@ class GoalPriority:
     priority_level: float  # 0.0 to 1.0
     deadline: Optional[datetime] = None
     progress: float = 0.0  # 0.0 to 1.0
-from typing import Optional
 
 
 @dataclass

@@ -14,7 +14,7 @@ from google.adk.agents import LlmAgent
 from google.adk.agents.invocation_context import InvocationContext
 from google.adk.sessions import Session
 
-from ....core.domain import (
+from ....domain import (
     EmotionalState,
     MinionPersona,
     Experience,
