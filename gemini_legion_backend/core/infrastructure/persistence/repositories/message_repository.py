@@ -1,7 +1,7 @@
 """
 Message Repository Interface
 
-This module defines the repository interface for ChannelMessage entities.
+This module defines the repository interface for Message entities.
 """
 
 from typing import List, Optional
@@ -9,12 +9,12 @@ from datetime import datetime
 from abc import abstractmethod
 
 from .base import Repository
-from ....domain import ChannelMessage, MessageType
+from ....domain import Message, MessageType
 
 
-class MessageRepository(Repository[ChannelMessage]):
+class MessageRepository(Repository[Message]):
     """
-    Repository interface for ChannelMessage entities
+    Repository interface for Message entities
     
     Extends the base repository with Message-specific operations.
     """
@@ -27,7 +27,7 @@ class MessageRepository(Repository[ChannelMessage]):
         before: Optional[datetime] = None,
         after: Optional[datetime] = None,
         sender_id: Optional[str] = None
-    ) -> List[ChannelMessage]:
+    ) -> List[Message]:
         """
         Get messages from a specific channel with filtering
         
@@ -44,7 +44,7 @@ class MessageRepository(Repository[ChannelMessage]):
         pass
     
     @abstractmethod
-    async def get_thread_messages(self, parent_message_id: str) -> List[ChannelMessage]:
+    async def get_thread_messages(self, parent_message_id: str) -> List[Message]:
         """
         Get all messages in a thread
         
@@ -62,7 +62,7 @@ class MessageRepository(Repository[ChannelMessage]):
         query: str,
         channel_ids: Optional[List[str]] = None,
         limit: int = 50
-    ) -> List[ChannelMessage]:
+    ) -> List[Message]:
         """
         Search messages by content
         

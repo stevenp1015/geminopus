@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import logging
 
-from google.adk.tools import Tool
+from google.adk.tools import BaseTool
 
 
 logger = logging.getLogger(__name__)
@@ -123,9 +123,9 @@ class MCPToADKAdapter:
     
     def __init__(self, mcp_client: MCPClient):
         self.mcp_client = mcp_client
-        self._adapted_tools: Dict[str, Type[Tool]] = {}
+        self._adapted_tools: Dict[str, Type[BaseTool]] = {}
     
-    async def adapt_tool(self, capability: MCPCapability) -> Type[Tool]:
+    async def adapt_tool(self, capability: MCPCapability) -> Type[BaseTool]:
         """
         Convert MCP capability to ADK tool class
         
@@ -140,7 +140,7 @@ class MCPToADKAdapter:
             return self._adapted_tools[capability.name]
         
         # Create dynamic tool class
-        class AdaptedMCPTool(Tool):
+        class AdaptedMCPTool(BaseTool):
             name = capability.name
             description = capability.description
             
@@ -185,7 +185,7 @@ class MCPToADKAdapter:
         
         return AdaptedMCPTool
     
-    async def discover_and_adapt_all(self) -> List[Type[Tool]]:
+    async def discover_and_adapt_all(self) -> List[Type[BaseTool]]:
         """
         Discover all MCP capabilities and adapt them to ADK tools
         
@@ -236,7 +236,7 @@ class ToolPermissionManager:
         """Set usage restrictions for a tool"""
         self.tool_restrictions[tool_name] = restrictions
     
-    def wrap_tool(self, tool: Tool, minion_id: str) -> Tool:
+    def wrap_tool(self, tool: BaseTool, minion_id: str) -> BaseTool:
         """
         Wrap a tool with permission checking
         
@@ -278,7 +278,7 @@ class MCPToolRegistry:
     """Registry for all available MCP tools"""
     
     def __init__(self):
-        self.tools: Dict[str, Type[Tool]] = {}
+        self.tools: Dict[str, Type[BaseTool]] = {}
         self.capabilities: Dict[str, MCPCapability] = {}
         self.adapters: List[MCPToADKAdapter] = []
     
@@ -303,7 +303,7 @@ class MCPToolRegistry:
         for tool_class in tools:
             self.register_tool(tool_class)
     
-    def register_tool(self, tool_class: Type[Tool]):
+    def register_tool(self, tool_class: Type[BaseTool]):
         """Register a single tool"""
         tool_name = tool_class.name
         
@@ -313,7 +313,7 @@ class MCPToolRegistry:
         self.tools[tool_name] = tool_class
         logger.debug(f"Registered tool: {tool_name}")
     
-    def get_tool(self, name: str) -> Optional[Type[Tool]]:
+    def get_tool(self, name: str) -> Optional[Type[BaseTool]]:
         """Get a tool class by name"""
         return self.tools.get(name)
     
@@ -321,7 +321,7 @@ class MCPToolRegistry:
         """List all available tool names"""
         return list(self.tools.keys())
     
-    def create_tool_instance(self, name: str) -> Optional[Tool]:
+    def create_tool_instance(self, name: str) -> Optional[BaseTool]:
         """Create an instance of a tool"""
         tool_class = self.get_tool(name)
         if tool_class:

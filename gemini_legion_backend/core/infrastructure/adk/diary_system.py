@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-from ...core.domain import EmotionalState, MoodVector
+from ...domain import EmotionalState, MoodVector
 
 
 logger = logging.getLogger(__name__)

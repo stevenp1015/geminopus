@@ -34,7 +34,7 @@ def convert_channel_to_response(channel_data: dict) -> ChannelResponse:
         id=channel_data["channel_id"],
         name=channel_data["name"],
         description=channel_data.get("description", ""),
-        members=channel_data.get("members", []),
+        members=[member_info["member_id"] for member_info in channel_data.get("members", []) if isinstance(member_info, dict) and "member_id" in member_info],
         is_private=channel_data.get("is_private", False),
         created_at=channel_data.get("created_at", datetime.now().isoformat()),
         message_count=channel_data.get("message_count", 0),

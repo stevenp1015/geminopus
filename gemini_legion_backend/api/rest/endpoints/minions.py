@@ -136,20 +136,24 @@ async def spawn_minion(
 ) -> OperationResponse:
     """Spawn a new minion"""
     try:
-        minion_id = await minion_service.spawn_minion(
+        spawn_result = await minion_service.spawn_minion(
             name=request.name,
             personality=request.personality,
             quirks=request.quirks,
             catchphrases=request.catchphrases,
             expertise=request.expertise,
             tools=request.tools
+            # minion_id is now optional in the service and will be generated if not passed
         )
         
-        logger.info(f"Spawned minion: {minion_id} - {request.name}")
+        # Assuming spawn_result is a dict that includes the minion_id
+        minion_id_from_service = spawn_result.get("minion_id", "UNKNOWN_ID_FROM_SERVICE")
+        
+        logger.info(f"Spawned minion: {minion_id_from_service} - {request.name}")
         
         return OperationResponse(
             status="spawned",
-            id=minion_id,
+            id=minion_id_from_service, # Use the ID from the service's response
             message=f"Minion '{request.name}' spawned successfully!   . .   .",
             timestamp=datetime.now().isoformat()
         )

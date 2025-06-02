@@ -10,6 +10,7 @@ from datetime import datetime
 import logging
 import asyncio
 from dataclasses import asdict
+import uuid # Import uuid
 
 from ...domain import (
     Minion,
@@ -25,6 +26,8 @@ from ...infrastructure.adk.memory_system import MinionMemorySystem
 from ...infrastructure.messaging.communication_system import InterMinionCommunicationSystem
 from ...infrastructure.messaging.safeguards import CommunicationSafeguards
 from ...infrastructure.persistence.repositories import MinionRepository
+
+from ....api.websocket.connection_manager import connection_manager
 
 
 logger = logging.getLogger(__name__)
@@ -97,14 +100,14 @@ class MinionService:
     
     async def spawn_minion(
         self,
-        minion_id: str,
         name: str,
-        base_personality: str,
+        personality: str, # Changed from base_personality
         quirks: List[str],
         catchphrases: Optional[List[str]] = None,
-        expertise_areas: Optional[List[str]] = None,
-        allowed_tools: Optional[List[str]] = None,
-        initial_mood: Optional[Dict[str, float]] = None
+        expertise: Optional[List[str]] = None,
+        tools: Optional[List[str]] = None, # Changed from allowed_tools
+        initial_mood: Optional[Dict[str, float]] = None,
+        minion_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Spawn a new Minion
@@ -115,9 +118,15 @@ class MinionService:
             Dictionary containing minion details and status
         """
         try:
+            # Generate minion_id if not provided
+            if not minion_id:
+                minion_id = str(uuid.uuid4())
+            
             # Check if minion already exists
             if minion_id in self.active_agents:
-                raise ValueError(f"Minion {minion_id} already exists")
+                # This could happen if a UUID collision occurs, though highly unlikely.
+                # Or if an ID was passed in that already exists.
+                raise ValueError(f"Minion {minion_id} already exists or collision.")
             
             # Create mood vector from dict if provided
             mood = None
@@ -128,11 +137,11 @@ class MinionService:
             agent = await self.minion_factory.create_minion(
                 minion_id=minion_id,
                 name=name,
-                base_personality=base_personality,
+                base_personality=personality, # Use new parameter name
                 quirks=quirks,
                 catchphrases=catchphrases,
-                expertise_areas=expertise_areas,
-                allowed_tools=allowed_tools,
+                expertise_areas=expertise,
+                allowed_tools=tools, # This line should now be correct as 'tools' is the param
                 initial_mood=mood
             )
             
@@ -148,20 +157,41 @@ class MinionService:
             
             # Log spawn event
             logger.info(f"Spawned Minion: {name} ({minion_id})")
+
+            if minion: # Ensure minion object exists before broadcasting
+                minion_data_for_broadcast = self._minion_to_dict(minion)
+                asyncio.create_task(connection_manager.broadcast_service_event(
+                    "minion_spawned",
+                    {"minion": minion_data_for_broadcast}
+                ))
+                asyncio.create_task(connection_manager.broadcast_service_event(
+                    "minion_status_changed",
+                    {"minion_id": minion_id, "status": minion.status} # Use status from domain object
+                ))
             
             # Return minion details
+            # Ensure the returned status is consistent with what was broadcast
+            current_status = minion.status if minion else "active"
+            spawn_time_iso = minion.spawn_time.isoformat() if minion and hasattr(minion, 'spawn_time') else datetime.now().isoformat()
+            emotional_state_dict = asdict(minion.emotional_state) if minion and minion.emotional_state else None
+
             return {
                 "minion_id": minion_id,
                 "name": name,
-                "status": "active",
-                "personality": base_personality,
+                "status": current_status,
+                "personality": personality,
                 "quirks": quirks,
-                "spawn_time": datetime.now().isoformat(),
-                "emotional_state": asdict(minion.emotional_state) if minion else None
+                "expertise": expertise,
+                "catchphrases": catchphrases,
+                "tools": tools, # Ensure this matches the new parameter name
+                "spawn_time": spawn_time_iso,
+                "emotional_state": emotional_state_dict
             }
             
         except Exception as e:
-            logger.error(f"Failed to spawn minion {minion_id}: {e}")
+            # Ensure minion_id is part of the log message even if generated
+            log_minion_id = minion_id if 'minion_id' in locals() and minion_id else "UNKNOWN_ID"
+            logger.error(f"Failed to spawn minion {log_minion_id}: {e}")
             raise
     
     async def get_minion(self, minion_id: str) -> Optional[Dict[str, Any]]:
@@ -319,7 +349,14 @@ class MinionService:
         # Apply the update
         await agent.emotional_engine.apply_direct_update(current_state)
         
-        return await self.get_emotional_state(minion_id)
+        updated_state_dict = await self.get_emotional_state(minion_id)
+
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "minion_emotional_state_updated",
+            {"minion_id": minion_id, "emotional_state": updated_state_dict}
+        ))
+
+        return updated_state_dict
     
     async def send_command(
         self,
@@ -429,14 +466,26 @@ class MinionService:
         # Update status in repository
         minion = await self.repository.get_by_id(minion_id)
         if minion:
-            minion.status = "inactive"
+            minion.status = "inactive" # Status is set here
             await self.repository.save(minion)
+            minion_name = minion.persona.name if hasattr(minion, 'persona') else minion_id
+        else:
+            minion_name = minion_id # Fallback if minion object not retrieved
+
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "minion_despawned",
+            {"minion_id": minion_id, "minion_name": minion_name}
+        ))
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "minion_status_changed",
+            {"minion_id": minion_id, "status": "inactive"}
+        ))
         
         logger.info(f"Deactivated minion {minion_id}")
         
         return {
             "minion_id": minion_id,
-            "status": "deactivated",
+            "status": "inactive", # This is correct for the return value
             "timestamp": datetime.now().isoformat()
         }
     
@@ -496,6 +545,9 @@ class MinionService:
             for minion in minions:
                 try:
                     # Recreate the agent
+                    initial_mood_obj = None
+                    if minion.emotional_state and hasattr(minion.emotional_state, 'mood'):
+                        initial_mood_obj = minion.emotional_state.mood
                     agent = await self.minion_factory.create_minion(
                         minion_id=minion.minion_id,
                         name=minion.persona.name,
@@ -504,11 +556,12 @@ class MinionService:
                         catchphrases=minion.persona.catchphrases,
                         expertise_areas=minion.persona.expertise_areas,
                         allowed_tools=minion.persona.allowed_tools,
-                        initial_mood=minion.emotional_state.mood
+                        initial_mood=initial_mood_obj
                     )
                     
                     # Restore emotional state
-                    await agent.emotional_engine.apply_direct_update(minion.emotional_state)
+                    if minion.emotional_state:
+                        await agent.emotional_engine.apply_direct_update(minion.emotional_state)
                     
                     # Register as active
                     self.active_agents[minion.minion_id] = agent

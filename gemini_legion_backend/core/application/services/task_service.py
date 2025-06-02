@@ -13,6 +13,7 @@ from enum import Enum
 from dataclasses import asdict
 import json
 
+from ....api.websocket.connection_manager import connection_manager
 from ...domain import (
     Task,
     TaskStatus,
@@ -149,7 +150,13 @@ class TaskService:
             
             logger.info(f"Created task: {title} ({task_id})")
             
-            return self._task_to_dict(task)
+            task_dict = self._task_to_dict(task)
+            asyncio.create_task(connection_manager.broadcast_service_event(
+                "task_created",
+                {"task": task_dict}
+            ))
+
+            return task_dict
             
         except Exception as e:
             logger.error(f"Failed to create task {task_id}: {e}")
@@ -338,6 +345,16 @@ class TaskService:
         await self._notify_assignment(best_minion["minion_id"], task)
         
         logger.info(f"Auto-assigned task {task_id} to {best_minion['name']}")
+
+        task_dict_for_event = self._task_to_dict(task) # Get latest task state
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "task_assigned",
+            {"task_id": task.task_id, "minion_id": best_minion["minion_id"]}
+        ))
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "task_updated", # Send the whole task as its assignment and status changed
+            {"task": task_dict_for_event}
+        ))
         
         return {
             "task_id": task_id,
@@ -401,8 +418,18 @@ class TaskService:
         })
         
         logger.info(f"Started task {task_id} with minion {task.assigned_to}")
-        
-        return {
+
+        task_dict_for_event = self._task_to_dict(task)
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "task_status_changed",
+            {"task_id": task.task_id, "status": task.status.value}
+        ))
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "task_updated",
+            {"task": task_dict_for_event}
+        ))
+
+        return { # Return value remains the same as original
             "task_id": task_id,
             "status": task.status.value,
             "assigned_to": task.assigned_to,
@@ -451,8 +478,20 @@ class TaskService:
         await self.repository.save(task)
         
         logger.info(f"Updated task {task_id} progress to {progress}%")
-        
-        return self._task_to_dict(task)
+
+        task_dict_for_event = self._task_to_dict(task)
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "task_updated",
+            {"task": task_dict_for_event}
+        ))
+
+        if task.status == TaskStatus.COMPLETED:
+            asyncio.create_task(connection_manager.broadcast_service_event(
+                "task_completed",
+                {"task": task_dict_for_event}
+            ))
+
+        return task_dict_for_event # Return the dict we already created
     
     async def get_task(self, task_id: str) -> Dict[str, Any]:
         """Get task details by ID"""

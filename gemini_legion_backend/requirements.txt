@@ -1,13 +1,15 @@
 # Gemini Legion Backend Requirements
 
 # Core Framework
-fastapi==0.109.0
-uvicorn[standard]==0.25.0
+fastapi==0.115.0
+uvicorn[standard]==0.34.0
 python-multipart==0.0.6
 
 # WebSocket Support
 python-socketio==5.11.0
 python-socketio[asyncio_client]==5.11.0
+python-engineio>=4.0.0
+bidict>=0.22.0
 
 # Data Validation
 pydantic==2.5.3
@@ -15,7 +17,7 @@ pydantic-settings==2.1.0
 
 # ADK (Google AI Development Kit)
 # Note: Replace with actual ADK package when available
-google-adk
+google-adk==1.1.1
 
 # AI/ML
 google-generativeai==0.3.2
@@ -25,8 +27,8 @@ langchain==0.1.5
 transformers==4.37.2
 
 # Vector Database
-chromadb==0.4.22
-faiss-cpu==1.7.4
+#chromadb==0.4.22
+#faiss-cpu==1.7.4
 
 # Storage
 motor==3.3.2  # Async MongoDB driver

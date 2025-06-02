@@ -11,7 +11,7 @@ from copy import deepcopy
 from collections import defaultdict
 
 from ..message_repository import MessageRepository
-from .....domain import ChannelMessage, MessageType
+from .....domain import Message, MessageType
 
 
 class MessageRepositoryMemory(MessageRepository):
@@ -24,12 +24,12 @@ class MessageRepositoryMemory(MessageRepository):
     def __init__(self):
         """Initialize the in-memory storage"""
         # Messages stored by channel_id for efficient channel queries
-        self._messages_by_channel: Dict[str, List[ChannelMessage]] = defaultdict(list)
+        self._messages_by_channel: Dict[str, List[Message]] = defaultdict(list)
         # Also store by message_id for direct lookups
-        self._messages_by_id: Dict[str, ChannelMessage] = {}
+        self._messages_by_id: Dict[str, Message] = {}
         self._lock = asyncio.Lock()
     
-    async def save(self, entity: ChannelMessage) -> ChannelMessage:
+    async def save(self, entity: Message) -> Message:
         """
         Save or update a message
         
@@ -67,7 +67,7 @@ class MessageRepositoryMemory(MessageRepository):
             
             return deepcopy(saved_message)
     
-    async def get_by_id(self, entity_id: str) -> Optional[ChannelMessage]:
+    async def get_by_id(self, entity_id: str) -> Optional[Message]:
         """
         Get a message by its ID
         
@@ -81,7 +81,7 @@ class MessageRepositoryMemory(MessageRepository):
             message = self._messages_by_id.get(entity_id)
             return deepcopy(message) if message else None
     
-    async def list_all(self, limit: int = 100, offset: int = 0) -> List[ChannelMessage]:
+    async def list_all(self, limit: int = 100, offset: int = 0) -> List[Message]:
         """
         List all messages with pagination
         
@@ -149,7 +149,7 @@ class MessageRepositoryMemory(MessageRepository):
         before: Optional[datetime] = None,
         after: Optional[datetime] = None,
         sender_id: Optional[str] = None
-    ) -> List[ChannelMessage]:
+    ) -> List[Message]:
         """
         Get messages from a specific channel with filtering
         
@@ -190,7 +190,7 @@ class MessageRepositoryMemory(MessageRepository):
         self,
         parent_message_id: str,
         limit: int = 50
-    ) -> List[ChannelMessage]:
+    ) -> List[Message]:
         """
         Get messages in a thread (replies to a parent message)
         
@@ -222,7 +222,7 @@ class MessageRepositoryMemory(MessageRepository):
         channel_id: Optional[str] = None,
         sender_id: Optional[str] = None,
         limit: int = 50
-    ) -> List[ChannelMessage]:
+    ) -> List[Message]:
         """
         Search messages by content
         
@@ -260,6 +260,29 @@ class MessageRepositoryMemory(MessageRepository):
             matching = matching[:limit]
             
             return [deepcopy(m) for m in matching]
+    
+    async def get_unread_count(self, channel_id: str, member_id: str, since: datetime) -> int:
+        """
+        Get count of unread messages for a member in a channel
+        
+        Args:
+            channel_id: The ID of the channel
+            member_id: The ID of the member  
+            since: Count messages after this timestamp
+            
+        Returns:
+            Number of unread messages
+        """
+        async with self._lock:
+            messages = self._messages_by_channel.get(channel_id, [])
+            
+            # Count messages after 'since' timestamp that aren't from the member
+            unread_count = sum(
+                1 for m in messages 
+                if m.timestamp > since and m.sender_id != member_id
+            )
+            
+            return unread_count
     
     async def clear(self):
         """Clear all messages from memory (for testing)"""

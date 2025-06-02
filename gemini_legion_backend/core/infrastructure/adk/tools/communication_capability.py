@@ -13,7 +13,7 @@ from enum import Enum
 import asyncio
 import json
 
-from google.adk.tools import Tool
+from google.adk.tools import BaseTool
 from google.adk.agents import LlmAgent
 
 from ....infrastructure.messaging.communication_system import (
@@ -47,7 +47,7 @@ class IncomingMessage:
     priority: MessagePriority = MessagePriority.NORMAL
 
 
-class SendMessageTool(Tool):
+class SendMessageTool(BaseTool):
     """
     ADK Tool for sending messages to channels
     
@@ -138,7 +138,7 @@ class SendMessageTool(Tool):
         return modifiers
 
 
-class SubscribeChannelTool(Tool):
+class SubscribeChannelTool(BaseTool):
     """
     ADK Tool for subscribing to channels
     
@@ -219,7 +219,7 @@ class SubscribeChannelTool(Tool):
         return MessagePriority.NORMAL
 
 
-class AutonomousCommunicationTool(Tool):
+class AutonomousCommunicationTool(BaseTool):
     """
     ADK Tool for autonomous communication decisions
     
@@ -352,7 +352,7 @@ class CommunicationCapability:
             comm_system
         )
     
-    def get_tools(self) -> List[Tool]:
+    def get_tools(self) -> List[BaseTool]:
         """Get all communication tools"""
         return [
             self.send_tool,

@@ -14,7 +14,8 @@ export const channelApi = {
       method: 'GET',
       headers: getHeaders(),
     })
-    return handleAPIResponse<Channel[]>(response)
+    const data = await handleAPIResponse<{ channels: Channel[], total: number }>(response)
+    return data.channels
   },
 
   /**
@@ -58,7 +59,8 @@ export const channelApi = {
       method: 'GET',
       headers: getHeaders(),
     })
-    return handleAPIResponse<Message[]>(response)
+    const data = await handleAPIResponse<{ messages: Message[], total: number, has_more: boolean }>(response)
+    return data.messages
   },
 
   /**

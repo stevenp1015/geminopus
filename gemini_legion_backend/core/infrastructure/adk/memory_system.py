@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
-from ...core.domain import Experience, EmotionalState, MoodVector
+from ...domain import Experience, EmotionalState, MoodVector
 
 
 logger = logging.getLogger(__name__)
@@ -62,9 +62,9 @@ class MemoryItem:
 @dataclass 
 class EpisodicMemory(MemoryItem):
     """Specific experience memory"""
-    experience: Experience
-    emotional_context: Dict[str, Any]
-    significance: float
+    experience: Optional[Experience] = None
+    emotional_context: Optional[Dict[str, Any]] = None
+    significance: Optional[float] = None
     related_memories: List[str] = field(default_factory=list)
     embeddings: Optional[np.ndarray] = None
 
@@ -72,20 +72,20 @@ class EpisodicMemory(MemoryItem):
 @dataclass
 class SemanticMemory(MemoryItem):
     """Learned knowledge/concept"""
-    concept: str
-    properties: Dict[str, Any]
-    relationships: Dict[str, List[str]]  # relationship_type -> entity_ids
-    confidence: float
+    concept: Optional[str] = None
+    properties: Optional[Dict[str, Any]] = field(default_factory=dict)
+    relationships: Optional[Dict[str, List[str]]] = field(default_factory=dict)
+    confidence: Optional[float] = 0.0
     source_episodes: List[str] = field(default_factory=list)
 
 
 @dataclass
 class ProceduralMemory(MemoryItem):
     """Learned skill or pattern"""
-    skill_name: str
-    trigger_conditions: Dict[str, Any]
-    action_sequence: List[Dict[str, Any]]
-    success_rate: float
+    skill_name: Optional[str] = None
+    trigger_conditions: Optional[Dict[str, Any]] = field(default_factory=dict)
+    action_sequence: Optional[List[Dict[str, Any]]] = field(default_factory=list)
+    success_rate: Optional[float] = 0.0
     usage_count: int = 0
     refinements: List[Dict[str, Any]] = field(default_factory=list)
 

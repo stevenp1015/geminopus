@@ -9,16 +9,20 @@ from .mood import MoodVector
 from .opinion import OpinionEvent, OpinionScore
 from .emotional_state import (
     ResponseTendency,
-    ConversationStyle, 
+    ConversationStyle,
     ReflectionEntry,
     GoalPriority,
     RelationshipGraph,
-    EmotionalState
+    EmotionalState,
+    EmotionalStateUpdate
 )
 from .memory import MemoryType, Experience, WorkingMemory
 from .minion import MinionPersona, MinionStatus, Minion
-from .communication import MessageType, Message, Channel
-from .task import TaskStatus, TaskPriority, Task, TaskResult
+from .communication import MessageType, Message, Channel, ChannelType, ChannelRole, ChannelMember
+from .task import (
+    TaskStatus, TaskPriority, Task, TaskResult,
+    TaskOrchestrationStrategy, SubTask, TaskDecomposition, TaskAssignment
+)
 
 __all__ = [
     # Base types
@@ -38,6 +42,7 @@ __all__ = [
     'GoalPriority',
     'RelationshipGraph',
     'EmotionalState',
+    'EmotionalStateUpdate',
     
     # Memory
     'MemoryType',
@@ -53,10 +58,17 @@ __all__ = [
     'MessageType',
     'Message',
     'Channel',
+    'ChannelType',
+    'ChannelRole',
+    'ChannelMember',
     
     # Task
     'TaskStatus',
     'TaskPriority',
     'Task',
     'TaskResult',
+    'TaskOrchestrationStrategy',
+    'SubTask',
+    'TaskDecomposition',
+    'TaskAssignment',
 ]

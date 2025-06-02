@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import { io, Socket } from 'socket.io-client'
 import toast from 'react-hot-toast'
-import { minionApi, channelApi, WS_BASE_URL } from '../services/api'
+import { minionApi, channelApi, WS_BASE_URL, API_BASE_URL } from '../services/api'
 import type { Minion, Channel, Message } from '../types'
 
 interface LegionState {
@@ -119,7 +119,7 @@ export const useLegionStore = create<LegionState>()(
       
       // WebSocket management
       connectWebSocket: () => {
-        const ws = io(`${WS_BASE_URL}/ws`, {
+        const ws = io(WS_BASE_URL, { // Remove the /ws path
           transports: ['websocket'],
           reconnection: true,
           reconnectionAttempts: 5,
@@ -144,7 +144,7 @@ export const useLegionStore = create<LegionState>()(
         
         ws.on('minion_despawned', (data: any) => {
           get().removeMinion(data.minion_id)
-          toast.info(`${data.minion_name} has left the Legion`)
+          toast(`${data.minion_name} has left the Legion`)
         })
         
         ws.on('minion_emotional_state_updated', (data: any) => {
@@ -186,7 +186,7 @@ export const useLegionStore = create<LegionState>()(
             const channel = chatStore.channels[data.channel_id]
             if (channel) {
               chatStore.updateChannel(data.channel_id, {
-                members: [...channel.members, data.minion_id]
+                participants: [...channel.participants, data.minion_id]
               })
             }
           })
@@ -198,11 +198,22 @@ export const useLegionStore = create<LegionState>()(
             const channel = chatStore.channels[data.channel_id]
             if (channel) {
               chatStore.updateChannel(data.channel_id, {
-                members: channel.members.filter(id => id !== data.minion_id)
+                participants: channel.participants.filter(id => id !== data.minion_id)
               })
             }
           })
         })
+
+        ws.on('channel_deleted', (data: { channel_id: string }) => {
+          if (data && data.channel_id) {
+            import('./chatStore').then(({ useChatStore }) => {
+              useChatStore.getState().removeChannel(data.channel_id);
+            });
+            toast(`Channel ${data.channel_id} was deleted.`);
+          } else {
+            console.warn('Received channel_deleted event with missing data:', data);
+          }
+        });
         
         // Task events (forward to task store)
         ws.on('task_created', (data: any) => {
@@ -238,7 +249,7 @@ export const useLegionStore = create<LegionState>()(
               })
             }
           })
-          toast.info(`Task assigned to ${data.minion_id}`)
+          toast(`Task assigned to ${data.minion_id}`)
         })
         
         ws.on('task_completed', (data: any) => {
@@ -269,8 +280,10 @@ export const useLegionStore = create<LegionState>()(
       fetchMinions: async () => {
         set({ loading: true, error: null })
         try {
-          const minions = await minionApi.list()
-          get().setMinions(minions)
+          const minionsResult = await minionApi.list()
+          console.log('[LegionStore] Minions result from minionApi.list():', minionsResult);
+          console.log('[LegionStore] Is minionsResult an array?:', Array.isArray(minionsResult));
+          get().setMinions(minionsResult)
         } catch (error) {
           console.error('Failed to fetch minions:', error)
           toast.error('Failed to fetch minions')
@@ -307,7 +320,7 @@ export const useLegionStore = create<LegionState>()(
       spawnMinion: async (config: any) => {
         try {
           // Call the /spawn endpoint with the correct payload structure
-          const response = await fetch(`${WS_BASE_URL}/api/minions/spawn`, {
+          const response = await fetch(`${API_BASE_URL}/api/minions/spawn`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

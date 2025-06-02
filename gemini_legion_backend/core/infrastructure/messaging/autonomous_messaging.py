@@ -9,8 +9,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from enum import Enum
+import dataclasses
 
-from ...core.domain import EmotionalState, Minion
+
+from ...domain import EmotionalState, Minion
 
 
 class CommunicationNeed(Enum):
@@ -290,7 +292,6 @@ class AutonomousMessagingEngine:
         return message
 
 
-import dataclasses  # Add this import at the top
     
     async def _analyze_communication_need(
         self,

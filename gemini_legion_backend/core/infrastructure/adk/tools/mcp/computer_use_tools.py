@@ -1,5 +1,5 @@
 """
-Computer Use MCP Tool Adapters
+Computer Use MCP BaseTool Adapters
 
 This module provides ADK-compatible computer use tools that wrap
 Desktop Commander MCP capabilities, allowing Minions to interact
@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 import logging
 
-from google.adk.tools import Tool
+from google.adk.tools import BaseTool
 
 from .mcp_adapter import MCPCapability
 
@@ -19,9 +19,9 @@ from .mcp_adapter import MCPCapability
 logger = logging.getLogger(__name__)
 
 
-class ComputerScreenshotTool(Tool):
+class ComputerScreenshotTool(BaseTool):
     """
-    Tool for taking screenshots of the desktop
+    BaseTool for taking screenshots of the desktop
     
     This tool allows Minions to capture the current state of the screen
     for analysis and decision making.
@@ -31,7 +31,7 @@ class ComputerScreenshotTool(Tool):
     description = "Take a screenshot of the desktop"
     
     def __init__(self):
-        super().__init__()
+        super().__init__(name=self.name, description=self.description)
         
     async def execute(self, save_path: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -73,9 +73,9 @@ class ComputerScreenshotTool(Tool):
             }
 
 
-class ComputerClickTool(Tool):
+class ComputerClickTool(BaseTool):
     """
-    Tool for clicking on screen elements
+    BaseTool for clicking on screen elements
     
     This tool allows Minions to interact with desktop applications
     by clicking on specific coordinates or elements.
@@ -85,7 +85,7 @@ class ComputerClickTool(Tool):
     description = "Click on a screen element"
     
     def __init__(self):
-        super().__init__()
+        super().__init__(name=self.name, description=self.description)
     
     async def execute(
         self,
@@ -133,9 +133,9 @@ class ComputerClickTool(Tool):
             }
 
 
-class ComputerTypeTool(Tool):
+class ComputerTypeTool(BaseTool):
     """
-    Tool for typing text
+    BaseTool for typing text
     
     This tool allows Minions to type text into applications,
     simulating keyboard input.
@@ -145,7 +145,7 @@ class ComputerTypeTool(Tool):
     description = "Type text using the keyboard"
     
     def __init__(self):
-        super().__init__()
+        super().__init__(name=self.name, description=self.description)
     
     async def execute(self, text: str, delay_ms: int = 0) -> Dict[str, Any]:
         """
@@ -183,9 +183,9 @@ class ComputerTypeTool(Tool):
             }
 
 
-class ComputerKeyTool(Tool):
+class ComputerKeyTool(BaseTool):
     """
-    Tool for pressing keyboard keys
+    BaseTool for pressing keyboard keys
     
     This tool allows Minions to send keyboard shortcuts and
     special key combinations.
@@ -195,7 +195,7 @@ class ComputerKeyTool(Tool):
     description = "Press keyboard keys or shortcuts"
     
     def __init__(self):
-        super().__init__()
+        super().__init__(name=self.name, description=self.description)
         
         # Common key mappings
         self.special_keys = {
@@ -261,9 +261,9 @@ class ComputerKeyTool(Tool):
             }
 
 
-class ComputerScrollTool(Tool):
+class ComputerScrollTool(BaseTool):
     """
-    Tool for scrolling
+    BaseTool for scrolling
     
     This tool allows Minions to scroll in applications,
     useful for navigating long documents or web pages.
@@ -273,7 +273,7 @@ class ComputerScrollTool(Tool):
     description = "Scroll in the active window"
     
     def __init__(self):
-        super().__init__()
+        super().__init__(name=self.name, description=self.description)
     
     async def execute(
         self,
@@ -325,9 +325,9 @@ class ComputerScrollTool(Tool):
             }
 
 
-class ComputerWaitTool(Tool):
+class ComputerWaitTool(BaseTool):
     """
-    Tool for waiting
+    BaseTool for waiting
     
     This tool allows Minions to wait for applications to load
     or for specific conditions to be met.
@@ -337,7 +337,7 @@ class ComputerWaitTool(Tool):
     description = "Wait for a specified duration"
     
     def __init__(self):
-        super().__init__()
+        super().__init__(name=self.name, description=self.description)
     
     async def execute(self, seconds: float) -> Dict[str, Any]:
         """
@@ -379,7 +379,7 @@ class ComputerWaitTool(Tool):
             }
 
 
-def create_computer_use_tools() -> List[Tool]:
+def create_computer_use_tools() -> List[BaseTool]:
     """
     Create all computer use tools
     
@@ -396,7 +396,7 @@ def create_computer_use_tools() -> List[Tool]:
     ]
 
 
-# Tool capability definitions for MCP registration
+# BaseTool capability definitions for MCP registration
 COMPUTER_USE_CAPABILITIES = [
     MCPCapability(
         name="computer_screenshot",

@@ -216,6 +216,32 @@ class MinionRepositoryMemory(MinionRepository):
             
             return deepcopy(minion)
     
+    async def list_by_expertise(self, expertise: str) -> List[Minion]:
+        """
+        List minions with a specific expertise
+        
+        Args:
+            expertise: The expertise area to filter by
+            
+        Returns:
+            List of minions with the specified expertise
+        """
+        async with self._lock:
+            # Filter by expertise (case-insensitive)
+            expertise_lower = expertise.lower()
+            filtered_minions = [
+                m for m in self._minions.values()
+                if any(exp.lower() == expertise_lower for exp in m.persona.expertise)
+            ]
+            
+            # Sort by last activity
+            filtered_minions.sort(
+                key=lambda m: m.last_activity or m.spawn_time,
+                reverse=True
+            )
+            
+            return [deepcopy(m) for m in filtered_minions]
+    
     async def clear(self):
         """Clear all minions from memory (for testing)"""
         async with self._lock:

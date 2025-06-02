@@ -1,5 +1,5 @@
 """
-Filesystem MCP Tool Adapters
+Filesystem MCP BaseTool Adapters
 
 This module provides ADK-compatible filesystem tools that wrap
 MCP filesystem capabilities, allowing Minions to interact with files.
@@ -12,7 +12,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 import logging
 
-from google.adk.tools import Tool
+from google.adk.tools import BaseTool
 
 from .mcp_adapter import MCPCapability, LocalMCPClient
 
@@ -20,9 +20,9 @@ from .mcp_adapter import MCPCapability, LocalMCPClient
 logger = logging.getLogger(__name__)
 
 
-class FileSystemReadTool(Tool):
+class FileSystemReadTool(BaseTool):
     """
-    Tool for reading files from the filesystem
+    BaseTool for reading files from the filesystem
     
     This tool allows Minions to read their diary files and other
     authorized files within the allowed directories.
@@ -38,7 +38,7 @@ class FileSystemReadTool(Tool):
         Args:
             allowed_paths: List of directory paths the tool can access
         """
-        super().__init__()
+        super().__init__(name=self.name, description=self.description)
         self.allowed_paths = [Path(p).resolve() for p in allowed_paths]
     
     def _is_path_allowed(self, path: Path) -> bool:
@@ -106,9 +106,9 @@ class FileSystemReadTool(Tool):
             }
 
 
-class FileSystemWriteTool(Tool):
+class FileSystemWriteTool(BaseTool):
     """
-    Tool for writing files to the filesystem
+    BaseTool for writing files to the filesystem
     
     This tool allows Minions to write their diary entries and other
     authorized files within the allowed directories.
@@ -124,7 +124,7 @@ class FileSystemWriteTool(Tool):
         Args:
             allowed_paths: List of directory paths the tool can access
         """
-        super().__init__()
+        super().__init__(name=self.name, description=self.description)
         self.allowed_paths = [Path(p).resolve() for p in allowed_paths]
     
     def _is_path_allowed(self, path: Path) -> bool:
@@ -194,9 +194,9 @@ class FileSystemWriteTool(Tool):
             }
 
 
-class FileSystemListTool(Tool):
+class FileSystemListTool(BaseTool):
     """
-    Tool for listing directory contents
+    BaseTool for listing directory contents
     
     This tool allows Minions to explore directory structures
     within allowed paths.
@@ -212,7 +212,7 @@ class FileSystemListTool(Tool):
         Args:
             allowed_paths: List of directory paths the tool can access
         """
-        super().__init__()
+        super().__init__(name=self.name, description=self.description)
         self.allowed_paths = [Path(p).resolve() for p in allowed_paths]
     
     def _is_path_allowed(self, path: Path) -> bool:
@@ -308,7 +308,7 @@ class FileSystemListTool(Tool):
             }
 
 
-class DiaryTool(Tool):
+class DiaryTool(BaseTool):
     """
     Specialized tool for Minion diary operations
     
@@ -327,7 +327,7 @@ class DiaryTool(Tool):
         Args:
             diary_base_path: Base directory for all Minion diaries
         """
-        super().__init__()
+        super().__init__(name=self.name, description=self.description)
         self.diary_base_path = Path(diary_base_path).resolve()
         self.diary_base_path.mkdir(parents=True, exist_ok=True)
     
@@ -506,7 +506,7 @@ class DiaryTool(Tool):
         }
 
 
-def create_filesystem_tools(config: Dict[str, Any]) -> List[Tool]:
+def create_filesystem_tools(config: Dict[str, Any]) -> List[BaseTool]:
     """
     Create filesystem tools with configuration
     

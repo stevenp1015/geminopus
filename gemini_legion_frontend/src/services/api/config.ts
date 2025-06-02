@@ -2,8 +2,8 @@
  * API Configuration
  */
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8888'
-export const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8888'
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+export const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8000'
 
 export const API_ENDPOINTS = {
   // Health
@@ -11,9 +11,9 @@ export const API_ENDPOINTS = {
   
   // Minions
   minions: {
-    list: '/api/minions',
+    list: '/api/minions/',
     get: (id: string) => `/api/minions/${id}`,
-    create: '/api/minions',
+    create: '/api/minions/',
     updateState: (id: string) => `/api/minions/${id}/state`,
     updatePersona: (id: string) => `/api/minions/${id}/persona`,
     delete: (id: string) => `/api/minions/${id}`,
@@ -23,9 +23,9 @@ export const API_ENDPOINTS = {
   
   // Channels
   channels: {
-    list: '/api/channels',
+    list: '/api/channels/',
     get: (id: string) => `/api/channels/${id}`,
-    create: '/api/channels',
+    create: '/api/channels/',
     messages: (id: string) => `/api/channels/${id}/messages`,
     sendMessage: (id: string) => `/api/channels/${id}/messages`,
     members: (id: string) => `/api/channels/${id}/members`,
@@ -35,9 +35,9 @@ export const API_ENDPOINTS = {
   
   // Tasks
   tasks: {
-    list: '/api/tasks',
+    list: '/api/tasks/',
     get: (id: string) => `/api/tasks/${id}`,
-    create: '/api/tasks',
+    create: '/api/tasks/',
     update: (id: string) => `/api/tasks/${id}`,
     updateStatus: (id: string) => `/api/tasks/${id}/status`,
     assign: (id: string) => `/api/tasks/${id}/assign`,
@@ -47,7 +47,7 @@ export const API_ENDPOINTS = {
   
   // Tools
   tools: {
-    list: '/api/tools',
+    list: '/api/tools/',
     get: (id: string) => `/api/tools/${id}`,
     execute: (id: string) => `/api/tools/${id}/execute`,
   },

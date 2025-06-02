@@ -65,6 +65,21 @@ class RelationshipGraph:
 
 
 @dataclass
+class EmotionalStateUpdate:
+    """
+    Represents a set of proposed changes to an EmotionalState.
+    All fields are optional, indicating no change if not provided.
+    """
+    mood_delta: Optional[MoodVector] = None
+    energy_delta: Optional[float] = None
+    stress_delta: Optional[float] = None
+    opinion_updates: Dict[str, Dict[str, float]] = field(default_factory=dict)
+    new_reflection: Optional[ReflectionEntry] = None
+    response_tendency_update: Optional[ResponseTendency] = None
+    conversation_style_update: Optional[ConversationStyle] = None
+
+
+@dataclass
 class EmotionalState:
     """
     Core emotional state for a Minion

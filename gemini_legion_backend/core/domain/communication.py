@@ -19,6 +19,28 @@ class MessageType(Enum):
     STATUS = "status"
 
 
+class ChannelType(Enum):
+    """Types of communication channels"""
+    PUBLIC = "public"
+    PRIVATE = "private"
+    DIRECT = "dm"  # For direct messages
+
+
+class ChannelRole(Enum):
+    """Roles within a channel"""
+    MEMBER = "member"
+    MODERATOR = "moderator"
+    ADMIN = "admin"
+
+
+@dataclass
+class ChannelMember:
+    """Represents a member in a channel"""
+    member_id: str
+    role: ChannelRole = ChannelRole.MEMBER
+    joined_at: datetime = field(default_factory=datetime.now)
+    added_by: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
 @dataclass
 class Message:
     """Represents a message in the communication system"""
@@ -29,7 +51,12 @@ class Message:
     message_type: MessageType = MessageType.CHAT
     timestamp: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
-    reply_to: Optional[str] = None  # For threaded conversations
+    parent_message_id: Optional[str] = None  # For threaded conversations
+    
+    # Additional fields for rich messaging
+    reactions: Dict[str, List[str]] = field(default_factory=dict)  # emoji -> list of reactor IDs
+    edited: bool = False
+    edited_at: Optional[datetime] = None
     
 
 @dataclass
@@ -37,12 +64,26 @@ class Channel:
     """Represents a communication channel"""
     channel_id: str
     name: str
+    channel_type: ChannelType = ChannelType.PUBLIC
     description: str = ""
-    members: List[str] = field(default_factory=list)
-    is_private: bool = False
+    members: List[ChannelMember] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)
+    created_by: str = "system"
+    
+    # Channel statistics
+    member_count: int = 0
+    message_count: int = 0
+    last_activity: Optional[datetime] = None
     
     # Channel settings
     allow_minion_initiated: bool = True
     max_message_rate: int = 60  # messages per minute
     auto_archive_after_days: int = 30
+    
+    # Metadata
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    # Soft delete fields
+    is_deleted: bool = False
+    deleted_at: Optional[datetime] = None
+    deleted_by: Optional[str] = None

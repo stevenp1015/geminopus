@@ -114,7 +114,7 @@ class TaskRepositoryMemory(TaskRepository):
     
     async def list_by_status(
         self,
-        status: TaskStatus,
+        statuses: List[TaskStatus],
         limit: int = 100,
         offset: int = 0
     ) -> List[Task]:
@@ -122,18 +122,18 @@ class TaskRepositoryMemory(TaskRepository):
         List tasks by status
         
         Args:
-            status: The status to filter by
+            statuses: List of statuses to filter by
             limit: Maximum number of tasks to return
             offset: Number of tasks to skip
             
         Returns:
-            List of tasks with the specified status
+            List of tasks with the specified statuses
         """
         async with self._lock:
-            # Filter by status
+            # Filter by statuses
             filtered_tasks = [
                 t for t in self._tasks.values()
-                if t.status == status
+                if t.status in statuses
             ]
             
             # Sort by priority and then creation time
@@ -295,6 +295,65 @@ class TaskRepositoryMemory(TaskRepository):
                 task.completed_at = datetime.now()
             
             return deepcopy(task)
+    
+    async def list_subtasks(self, parent_task_id: str) -> List[Task]:
+        """
+        List subtasks of a parent task
+        
+        Args:
+            parent_task_id: The ID of the parent task
+            
+        Returns:
+            List of subtasks
+        """
+        async with self._lock:
+            # Get the parent task
+            parent_task = self._tasks.get(parent_task_id)
+            if not parent_task:
+                return []
+            
+            # Get all subtasks
+            subtasks = []
+            for subtask_id in parent_task.subtasks:
+                subtask = self._tasks.get(subtask_id)
+                if subtask:
+                    subtasks.append(deepcopy(subtask))
+            
+            # Sort by creation time
+            subtasks.sort(key=lambda t: t.created_at)
+            
+            return subtasks
+    
+    async def get_dependencies(self, task_id: str) -> List[Task]:
+        """
+        Get tasks that a specific task depends on
+        
+        Args:
+            task_id: The ID of the task
+            
+        Returns:
+            List of dependency tasks
+        """
+        async with self._lock:
+            # Get the task
+            task = self._tasks.get(task_id)
+            if not task:
+                return []
+            
+            # Get all dependency tasks
+            dependencies = []
+            for dep_id in task.dependencies:
+                dep_task = self._tasks.get(dep_id)
+                if dep_task:
+                    dependencies.append(deepcopy(dep_task))
+            
+            # Sort by priority and creation time
+            dependencies.sort(
+                key=lambda t: (t.priority.value, t.created_at),
+                reverse=True
+            )
+            
+            return dependencies
     
     async def clear(self):
         """Clear all tasks from memory (for testing)"""

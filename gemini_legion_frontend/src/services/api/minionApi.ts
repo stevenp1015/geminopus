@@ -14,7 +14,8 @@ export const minionApi = {
       method: 'GET',
       headers: getHeaders(),
     })
-    return handleAPIResponse<Minion[]>(response)
+    const data = await handleAPIResponse<{ minions: Minion[], total: number }>(response)
+    return data.minions
   },
 
   /**

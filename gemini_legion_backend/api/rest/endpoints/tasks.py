@@ -32,6 +32,7 @@ def convert_task_to_response(task_data: dict) -> TaskResponse:
     status_map = {
         TaskStatus.PENDING: TaskStatusEnum.PENDING,
         TaskStatus.ASSIGNED: TaskStatusEnum.ASSIGNED,
+        TaskStatus.DECOMPOSED: TaskStatusEnum.DECOMPOSED,
         TaskStatus.IN_PROGRESS: TaskStatusEnum.IN_PROGRESS,
         TaskStatus.COMPLETED: TaskStatusEnum.COMPLETED,
         TaskStatus.FAILED: TaskStatusEnum.FAILED,
@@ -41,9 +42,9 @@ def convert_task_to_response(task_data: dict) -> TaskResponse:
     # Map internal priority to API enum
     priority_map = {
         TaskPriority.LOW: TaskPriorityEnum.LOW,
-        TaskPriority.MEDIUM: TaskPriorityEnum.MEDIUM,
+        TaskPriority.MEDIUM: TaskPriorityEnum.NORMAL,
         TaskPriority.HIGH: TaskPriorityEnum.HIGH,
-        TaskPriority.URGENT: TaskPriorityEnum.URGENT
+        TaskPriority.CRITICAL: TaskPriorityEnum.CRITICAL
     }
     
     status = task_data.get("status", TaskStatus.PENDING)
@@ -54,7 +55,7 @@ def convert_task_to_response(task_data: dict) -> TaskResponse:
         title=task_data["title"],
         description=task_data["description"],
         status=status_map.get(status, TaskStatusEnum.PENDING),
-        priority=priority_map.get(priority, TaskPriorityEnum.MEDIUM),
+        priority=priority_map.get(priority, TaskPriorityEnum.NORMAL),
         assigned_to=task_data.get("assigned_to"),
         created_by=task_data.get("created_by", "commander"),
         parent_task_id=task_data.get("parent_task_id"),
@@ -141,9 +142,9 @@ async def create_task(
         # Convert API priority to domain priority
         priority_map = {
             TaskPriorityEnum.LOW: TaskPriority.LOW,
-            TaskPriorityEnum.MEDIUM: TaskPriority.MEDIUM,
+            TaskPriorityEnum.NORMAL: TaskPriority.MEDIUM,
             TaskPriorityEnum.HIGH: TaskPriority.HIGH,
-            TaskPriorityEnum.URGENT: TaskPriority.URGENT
+            TaskPriorityEnum.CRITICAL: TaskPriority.CRITICAL
         }
         
         task_id = await task_service.create_task(

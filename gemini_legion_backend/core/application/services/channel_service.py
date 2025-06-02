@@ -13,10 +13,11 @@ from dataclasses import asdict
 import json
 from collections import defaultdict
 
+from ....api.websocket.connection_manager import connection_manager
 from ...domain import (
     Channel,
     ChannelType,
-    ChannelMessage,
+    Message,
     MessageType,
     ChannelMember,
     ChannelRole
@@ -69,7 +70,7 @@ class ChannelService:
         self._channel_cleanup_task: Optional[asyncio.Task] = None
         
         # Message buffer for batched persistence
-        self.message_buffer: List[ChannelMessage] = []
+        self.message_buffer: List[Message] = []
         self._buffer_lock = asyncio.Lock()
     
     async def start(self):
@@ -171,7 +172,12 @@ class ChannelService:
             
             logger.info(f"Created channel: {name} ({channel_id})")
             
-            return self._channel_to_dict(channel)
+            channel_dict = self._channel_to_dict(channel)
+            asyncio.create_task(connection_manager.broadcast_service_event(
+                "channel_created",
+                {"channel": channel_dict}
+            ))
+            return channel_dict
             
         except Exception as e:
             logger.error(f"Failed to create channel {channel_id}: {e}")
@@ -237,7 +243,16 @@ class ChannelService:
         
         logger.info(f"Added {member_id} to channel {channel_id}")
         
-        return self._channel_to_dict(channel)
+        updated_channel_dict = self._channel_to_dict(channel)
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "channel_member_added",
+            {"channel_id": channel_id, "minion_id": member_id}
+        ))
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "channel_updated",
+            {"channel_id": channel_id, "updates": updated_channel_dict}
+        ))
+        return updated_channel_dict
     
     async def remove_member(
         self,
@@ -280,7 +295,16 @@ class ChannelService:
         
         logger.info(f"Removed {member_id} from channel {channel_id}")
         
-        return self._channel_to_dict(channel)
+        updated_channel_dict = self._channel_to_dict(channel)
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "channel_member_removed",
+            {"channel_id": channel_id, "minion_id": member_id}
+        ))
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "channel_updated",
+            {"channel_id": channel_id, "updates": updated_channel_dict}
+        ))
+        return updated_channel_dict
     
     async def send_message(
         self,
@@ -315,7 +339,7 @@ class ChannelService:
                 raise ValueError(f"{sender_id} is not a member of {channel_id}")
         
         # Create message
-        message = ChannelMessage(
+        message = Message(
             message_id=f"{channel_id}_{datetime.now().timestamp()}",
             channel_id=channel_id,
             sender_id=sender_id,
@@ -347,7 +371,12 @@ class ChannelService:
         
         logger.debug(f"Message sent to {channel_id} by {sender_id}")
         
-        return self._message_to_dict(message)
+        message_dict = self._message_to_dict(message)
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "message_sent",
+            {"channel_id": channel_id, "message": message_dict}
+        ))
+        return message_dict
     
     async def get_messages(
         self,
@@ -492,7 +521,12 @@ class ChannelService:
         
         logger.info(f"Updated channel {channel_id}")
         
-        return self._channel_to_dict(channel)
+        updated_channel_dict = self._channel_to_dict(channel)
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "channel_updated",
+            {"channel_id": channel_id, "updates": updated_channel_dict}
+        ))
+        return updated_channel_dict
     
     async def delete_channel(
         self,
@@ -542,6 +576,11 @@ class ChannelService:
         
         logger.info(f"Deleted channel {channel_id}")
         
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "channel_deleted",
+            {"channel_id": channel_id}
+        ))
+
         return {
             "channel_id": channel_id,
             "deleted": True,
@@ -551,7 +590,7 @@ class ChannelService:
     async def subscribe_to_channel(
         self,
         channel_id: str,
-        callback: Callable[[ChannelMessage], None]
+        callback: Callable[[Message], None]
     ) -> str:
         """
         Subscribe to real-time channel messages
@@ -574,7 +613,7 @@ class ChannelService:
     async def unsubscribe_from_channel(
         self,
         channel_id: str,
-        callback: Callable[[ChannelMessage], None]
+        callback: Callable[[Message], None]
     ):
         """Unsubscribe from channel messages"""
         if callback in self.channel_subscribers[channel_id]:
@@ -705,9 +744,10 @@ class ChannelService:
                         role="member",
                         added_by="system"
                     )
-                except:
-                    # Ignore if already member
-                    pass
+                except ValueError as ve: # Specifically catch if already a member or other known input issue
+                    logger.debug(f"Skipping add_member for {minion.get('minion_id', 'UNKNOWN')} to {channel_id} (already member or input issue): {ve}")
+                except Exception as e_add: # Catch other unexpected errors during add_member
+                    logger.error(f"Unexpected error auto-adding minion {minion.get('minion_id', 'UNKNOWN')} to {channel_id}: {e_add}")
                     
         except Exception as e:
             logger.error(f"Error auto-adding minions to {channel_id}: {e}")
@@ -727,7 +767,7 @@ class ChannelService:
             metadata=metadata
         )
     
-    async def _notify_subscribers(self, channel_id: str, message: ChannelMessage):
+    async def _notify_subscribers(self, channel_id: str, message: Message):
         """Notify all subscribers of a new message"""
         subscribers = self.channel_subscribers.get(channel_id, set())
         
@@ -787,7 +827,7 @@ class ChannelService:
             "metadata": channel.metadata
         }
     
-    def _message_to_dict(self, message: ChannelMessage) -> Dict[str, Any]:
+    def _message_to_dict(self, message: Message) -> Dict[str, Any]:
         """Convert domain Message to API-friendly dictionary"""
         return {
             "message_id": message.message_id,

@@ -29,6 +29,26 @@ class MessageTypeEnum(str, Enum):
     STATUS = "status"
 
 
+class TaskStatusEnum(str, Enum):
+    """Task status"""
+    PENDING = "pending"
+    ASSIGNED = "assigned"
+    DECOMPOSED = "decomposed"
+    IN_PROGRESS = "in_progress"
+    BLOCKED = "blocked"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class TaskPriorityEnum(str, Enum):
+    """Task priority levels"""
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
 # --- Request Models ---
 
 class CreateMinionRequest(BaseModel):
@@ -88,6 +108,26 @@ class SendMessageRequest(BaseModel):
 class RebootMinionRequest(BaseModel):
     """Request to reboot a minion"""
     hard_reset: bool = Field(default=False, description="Perform hard reset (clear emotional state)")
+
+
+class CreateTaskRequest(BaseModel):
+    """Request to create a new task"""
+    title: str = Field(..., min_length=1, max_length=200)
+    description: str = Field(..., min_length=1, max_length=1000)
+    priority: TaskPriorityEnum = Field(default=TaskPriorityEnum.NORMAL)
+    assigned_to: Optional[str] = None
+    dependencies: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "title": "Analyze competitor products",
+                "description": "Research and analyze top 5 competitor products in the market",
+                "priority": "high",
+                "assigned_to": "minion_abc123"
+            }
+        }
 
 
 # --- Response Models ---
@@ -169,6 +209,25 @@ class OperationResponse(BaseModel):
     timestamp: Optional[str] = None
 
 
+class TaskResponse(BaseModel):
+    """Task information"""
+    id: str
+    title: str
+    description: str
+    status: TaskStatusEnum
+    priority: TaskPriorityEnum
+    assigned_to: Optional[str] = None
+    created_by: str
+    created_at: str
+    updated_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    parent_id: Optional[str] = None
+    subtasks: List[str] = Field(default_factory=list)
+    dependencies: List[str] = Field(default_factory=list)
+    result: Optional[Dict[str, Any]] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
 # --- List Response Models ---
 
 class MinionsListResponse(BaseModel):
@@ -186,6 +245,13 @@ class ChannelsListResponse(BaseModel):
 class MessagesListResponse(BaseModel):
     """List of messages"""
     messages: List[MessageResponse]
+    total: Optional[int] = None
+    has_more: bool = False
+
+
+class TasksListResponse(BaseModel):
+    """List of tasks"""
+    tasks: List[TaskResponse]
     total: Optional[int] = None
     has_more: bool = False
 

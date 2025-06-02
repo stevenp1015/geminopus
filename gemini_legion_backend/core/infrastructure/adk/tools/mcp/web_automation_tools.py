@@ -1,5 +1,5 @@
 """
-Web Automation MCP Tool Adapters
+Web Automation MCP BaseTool Adapters
 
 This module provides ADK-compatible web automation tools that wrap
 Playwright MCP capabilities, allowing Minions to interact with web pages.
@@ -10,7 +10,7 @@ from datetime import datetime
 import logging
 import json
 
-from google.adk.tools import Tool
+from google.adk.tools import BaseTool
 
 from .mcp_adapter import MCPCapability
 
@@ -18,9 +18,9 @@ from .mcp_adapter import MCPCapability
 logger = logging.getLogger(__name__)
 
 
-class WebNavigateTool(Tool):
+class WebNavigateTool(BaseTool):
     """
-    Tool for navigating to web pages
+    BaseTool for navigating to web pages
     
     This tool allows Minions to open web pages in a browser
     for analysis or interaction.
@@ -30,7 +30,7 @@ class WebNavigateTool(Tool):
     description = "Navigate to a URL in the browser"
     
     def __init__(self):
-        super().__init__()
+        super().__init__(name=self.name, description=self.description)
         self.current_url = None
     
     async def execute(
@@ -78,9 +78,9 @@ class WebNavigateTool(Tool):
             }
 
 
-class WebScreenshotTool(Tool):
+class WebScreenshotTool(BaseTool):
     """
-    Tool for taking screenshots of web pages
+    BaseTool for taking screenshots of web pages
     
     This tool allows Minions to capture the current state of a web page
     for analysis or documentation.
@@ -90,7 +90,7 @@ class WebScreenshotTool(Tool):
     description = "Take a screenshot of the current web page"
     
     def __init__(self):
-        super().__init__()
+        super().__init__(name=self.name, description=self.description)
     
     async def execute(
         self,
@@ -141,9 +141,9 @@ class WebScreenshotTool(Tool):
             }
 
 
-class WebClickTool(Tool):
+class WebClickTool(BaseTool):
     """
-    Tool for clicking elements on web pages
+    BaseTool for clicking elements on web pages
     
     This tool allows Minions to interact with web page elements
     by clicking on them.
@@ -153,7 +153,7 @@ class WebClickTool(Tool):
     description = "Click on a web page element"
     
     def __init__(self):
-        super().__init__()
+        super().__init__(name=self.name, description=self.description)
     
     async def execute(
         self,
@@ -198,9 +198,9 @@ class WebClickTool(Tool):
             }
 
 
-class WebFillTool(Tool):
+class WebFillTool(BaseTool):
     """
-    Tool for filling form fields
+    BaseTool for filling form fields
     
     This tool allows Minions to fill in text fields, textareas,
     and other input elements on web pages.
@@ -210,7 +210,7 @@ class WebFillTool(Tool):
     description = "Fill a form field with text"
     
     def __init__(self):
-        super().__init__()
+        super().__init__(name=self.name, description=self.description)
     
     async def execute(
         self,
@@ -249,9 +249,9 @@ class WebFillTool(Tool):
             }
 
 
-class WebExtractTextTool(Tool):
+class WebExtractTextTool(BaseTool):
     """
-    Tool for extracting text from web pages
+    BaseTool for extracting text from web pages
     
     This tool allows Minions to extract text content from
     web pages for analysis or processing.
@@ -261,7 +261,7 @@ class WebExtractTextTool(Tool):
     description = "Extract text content from the web page"
     
     def __init__(self):
-        super().__init__()
+        super().__init__(name=self.name, description=self.description)
     
     async def execute(
         self,
@@ -305,9 +305,9 @@ class WebExtractTextTool(Tool):
             }
 
 
-class WebExecuteScriptTool(Tool):
+class WebExecuteScriptTool(BaseTool):
     """
-    Tool for executing JavaScript in web pages
+    BaseTool for executing JavaScript in web pages
     
     This tool allows Minions to run custom JavaScript code
     in the context of web pages for advanced interactions.
@@ -317,7 +317,7 @@ class WebExecuteScriptTool(Tool):
     description = "Execute JavaScript code in the web page"
     
     def __init__(self):
-        super().__init__()
+        super().__init__(name=self.name, description=self.description)
     
     async def execute(
         self,
@@ -363,9 +363,9 @@ class WebExecuteScriptTool(Tool):
             }
 
 
-class WebWaitForElementTool(Tool):
+class WebWaitForElementTool(BaseTool):
     """
-    Tool for waiting for elements to appear
+    BaseTool for waiting for elements to appear
     
     This tool allows Minions to wait for specific elements
     to appear on the page before proceeding.
@@ -375,7 +375,7 @@ class WebWaitForElementTool(Tool):
     description = "Wait for an element to appear on the page"
     
     def __init__(self):
-        super().__init__()
+        super().__init__(name=self.name, description=self.description)
     
     async def execute(
         self,
@@ -422,9 +422,9 @@ class WebWaitForElementTool(Tool):
             }
 
 
-class WebSearchTool(Tool):
+class WebSearchTool(BaseTool):
     """
-    Tool for searching the web
+    BaseTool for searching the web
     
     This tool allows Minions to perform web searches
     and navigate to search results.
@@ -434,7 +434,7 @@ class WebSearchTool(Tool):
     description = "Search the web using a search engine"
     
     def __init__(self):
-        super().__init__()
+        super().__init__(name=self.name, description=self.description)
         self.search_engines = {
             "google": "https://www.google.com/search?q=",
             "bing": "https://www.bing.com/search?q=",
@@ -495,7 +495,7 @@ class WebSearchTool(Tool):
             }
 
 
-def create_web_automation_tools() -> List[Tool]:
+def create_web_automation_tools() -> List[BaseTool]:
     """
     Create all web automation tools
     
@@ -514,7 +514,7 @@ def create_web_automation_tools() -> List[Tool]:
     ]
 
 
-# Tool capability definitions for MCP registration
+# BaseTool capability definitions for MCP registration
 WEB_AUTOMATION_CAPABILITIES = [
     MCPCapability(
         name="web_navigate",

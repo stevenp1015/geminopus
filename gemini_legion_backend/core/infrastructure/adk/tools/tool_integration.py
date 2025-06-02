@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Any
 import logging
 from pathlib import Path
 
-from google.adk.tools import Tool
+from google.adk.tools import BaseTool
 
 from .communication_capability import CommunicationCapability
 from .mcp import (
@@ -58,10 +58,9 @@ class ToolIntegrationManager:
         self.permission_manager = ToolPermissionManager()
         
         # Tool collections by category
-        self.filesystem_tools: List[Tool] = []
-        self.web_tools: List[Tool] = []
-        self.analysis_tools: List[Tool] = []
-        self.custom_tools: Dict[str, Tool] = {}
+        self.web_tools: List[BaseTool] = []
+        self.analysis_tools: List[BaseTool] = []
+        self.custom_tools: Dict[str, BaseTool] = {}
         
         # Initialize default tools
         self._initialize_default_tools()
@@ -128,7 +127,7 @@ class ToolIntegrationManager:
             safeguards=self.safeguards
         )
     
-    def get_tools_for_minion(self, minion: Minion) -> List[Tool]:
+    def get_tools_for_minion(self, minion: Minion) -> List[BaseTool]:
         """
         Get all tools available to a specific Minion
         
@@ -163,7 +162,7 @@ class ToolIntegrationManager:
         
         return tools
     
-    def register_custom_tool(self, tool: Tool, category: Optional[str] = None):
+    def register_custom_tool(self, tool: BaseTool, category: Optional[str] = None):
         """
         Register a custom tool
         

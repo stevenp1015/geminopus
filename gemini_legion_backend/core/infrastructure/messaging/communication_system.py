@@ -11,6 +11,9 @@ from typing import List, Dict, Optional, Any, Callable
 from enum import Enum
 import asyncio
 from collections import defaultdict
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class CommunicationMode(Enum):
@@ -214,6 +217,61 @@ class InterMinionCommunicationSystem:
     def subscribe_to_channel(self, channel: str, callback: Callable):
         """Subscribe to messages on a channel"""
         self.conversational_layer.message_router.subscribe(channel, callback)
+
+    # Methods required by ChannelService
+    def create_channel(self, channel_id: str):
+        """
+        Recognize a new channel in the communication system.
+        Currently, channels are implicitly handled by subscriptions in MessageRouter.
+        """
+        logger.debug(f"CommunicationSystem: Channel '{channel_id}' recognized/created.")
+        # No specific action needed for MessageRouter if channels are implicit.
+
+    def add_channel_member(self, channel_id: str, member_id: str):
+        """
+        Recognize a member being added to a channel.
+        MessageRouter does not track members, only subscribers (callbacks).
+        """
+        logger.debug(f"CommunicationSystem: Member '{member_id}' noted for channel '{channel_id}'.")
+        # No specific action needed for MessageRouter.
+
+    def remove_channel_member(self, channel_id: str, member_id: str):
+        """
+        Recognize a member being removed from a channel.
+        MessageRouter does not track members.
+        """
+        logger.debug(f"CommunicationSystem: Member '{member_id}' removal noted for channel '{channel_id}'.")
+        # No specific action needed for MessageRouter.
+
+    def delete_channel(self, channel_id: str):
+        """
+        Clean up a channel from the communication system, e.g., clear subscribers.
+        """
+        if channel_id in self.conversational_layer.message_router.subscribers:
+            del self.conversational_layer.message_router.subscribers[channel_id]
+            logger.info(f"CommunicationSystem: Cleared subscribers for deleted channel '{channel_id}'.")
+        else:
+            logger.debug(f"CommunicationSystem: No subscribers to clear for non-existent/inactive channel '{channel_id}'.")
+
+    async def broadcast_message(
+        self,
+        channel_id: str,
+        sender_id: str,
+        content: str,
+        metadata: Optional[Dict[str, Any]] = None
+    ):
+        """
+        Broadcasts a message directly via the MessageRouter, bypassing turn-taking.
+        Suitable for system messages or when turn-taking is handled externally.
+        """
+        logger.debug(f"CommunicationSystem: Broadcasting message from '{sender_id}' to channel '{channel_id}'.")
+        msg = ConversationalMessage(
+            sender=sender_id,
+            channel=channel_id,
+            content=content,
+            personality_hints=metadata if metadata else {} # Or map specific metadata keys
+        )
+        await self.conversational_layer.message_router.route(msg)
     
     async def emit_event(self, event_type: str, data: Any):
         """Emit an event to all subscribers"""

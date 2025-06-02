@@ -16,7 +16,7 @@ from .infrastructure.persistence.repositories.memory import (
     TaskRepositoryMemory
 )
 from .infrastructure.messaging.communication_system import InterMinionCommunicationSystem
-from ..infrastructure.messaging.safeguards import CommunicationSafeguards
+from .infrastructure.messaging.safeguards import CommunicationSafeguards
 from .application.services import (
     MinionService,
     TaskService,
@@ -70,8 +70,6 @@ class ServiceContainer:
         # Initialize MinionService
         self.minion_service = MinionService(
             minion_repository=self.minion_repository,
-            diary_storage_path=str(self.config["diary_storage_path"]),
-            memory_storage_path=str(self.config["memory_storage_path"]),
             comm_system=self.comm_system,
             safeguards=self.safeguards
         )
