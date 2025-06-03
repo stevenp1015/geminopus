@@ -18,6 +18,7 @@ from ..schemas import (
     MoodVectorResponse,
     OpinionScoreResponse,
     EmotionalStateResponse,
+    MinionPersonaResponse, # Added for nested persona
     MinionStatusEnum,
     SendMessageRequest
 )
@@ -31,62 +32,87 @@ router = APIRouter(prefix="/api/minions", tags=["minions"])
 
 
 def convert_minion_to_response(minion_data: Dict[str, Any]) -> MinionResponse:
-    """Convert a minion data dict to API response format"""
-    # Extract emotional state
-    emotional_state = minion_data.get("emotional_state", {})
+    """Convert a minion data dict (from service layer) to API response format"""
     
-    # Convert mood vector
-    mood = emotional_state.get("mood", {})
-    mood_response = MoodVectorResponse(
-        valence=mood.get("valence", 0.0),
-        arousal=mood.get("arousal", 0.5),
-        dominance=mood.get("dominance", 0.3),
-        curiosity=mood.get("curiosity", 0.7),
-        creativity=mood.get("creativity", 0.6),
-        sociability=mood.get("sociability", 0.6)
-    )
-    
-    # Convert opinion scores
-    opinion_scores = {}
-    for entity_id, opinion in emotional_state.get("opinion_scores", {}).items():
-        opinion_scores[entity_id] = OpinionScoreResponse(
-            trust=opinion.get("trust", 0.0),
-            respect=opinion.get("respect", 0.0),
-            affection=opinion.get("affection", 0.0),
-            overall_sentiment=opinion.get("overall_sentiment", 0.0)
+    # Extract full emotional state from minion_data (now provided by service's _minion_to_dict)
+    raw_emotional_state = minion_data.get("emotional_state")
+
+    if raw_emotional_state:
+        # Convert mood vector
+        mood_data = raw_emotional_state.get("mood", {})
+        mood_response = MoodVectorResponse(
+            valence=mood_data.get("valence", 0.0),
+            arousal=mood_data.get("arousal", 0.5),
+            dominance=mood_data.get("dominance", 0.3),
+            curiosity=mood_data.get("curiosity", 0.7),
+            creativity=mood_data.get("creativity", 0.6),
+            sociability=mood_data.get("sociability", 0.6)
         )
+        
+        # Convert opinion scores
+        opinion_scores_response = {}
+        raw_opinion_scores = raw_emotional_state.get("opinion_scores", {})
+        for entity_id, opinion_data in raw_opinion_scores.items():
+            opinion_scores_response[entity_id] = OpinionScoreResponse(
+                trust=opinion_data.get("trust", 0.0),
+                respect=opinion_data.get("respect", 0.0),
+                affection=opinion_data.get("affection", 0.0),
+                overall_sentiment=opinion_data.get("overall_sentiment", 0.0)
+                # Note: domain OpinionScore might have more fields like interaction_count, last_interaction
+                # These are not in OpinionScoreResponse schema currently
+            )
+        
+        emotional_response = EmotionalStateResponse(
+            minion_id=minion_data.get("minion_id", "unknown_minion_id"), # Use .get for safety
+            mood=mood_response,
+            energy_level=raw_emotional_state.get("energy_level", 0.8),
+            stress_level=raw_emotional_state.get("stress_level", 0.2),
+            opinion_scores=opinion_scores_response,
+            last_updated=raw_emotional_state.get("last_updated", datetime.now().isoformat()),
+            state_version=raw_emotional_state.get("state_version", 1)
+        )
+    else:
+        # Fallback if emotional_state is entirely missing from minion_data (should not happen ideally)
+        logger.warning(f"Emotional state missing for minion {minion_data.get('minion_id')}. Using default emotional response.")
+        default_mood = MoodVectorResponse(valence=0, arousal=0.5, dominance=0.3, curiosity=0.7, creativity=0.6, sociability=0.6)
+        emotional_response = EmotionalStateResponse(
+            minion_id=minion_data.get("minion_id", "unknown_minion_id"),
+            mood=default_mood,
+            energy_level=0.8,
+            stress_level=0.2,
+            opinion_scores={},
+            last_updated=datetime.now().isoformat(),
+            state_version=1
+        )
+
+    # The minion_data["status"] is now a string enum directly from the service.
+    api_status_enum_str = minion_data.get("status", MinionStatusEnum.ERROR.value)
+    try:
+        validated_api_status_enum = MinionStatusEnum(api_status_enum_str)
+    except ValueError:
+        logger.warning(f"Invalid status string '{api_status_enum_str}' received for minion {minion_data.get('minion_id')}. Defaulting to ERROR.")
+        validated_api_status_enum = MinionStatusEnum.ERROR
     
-    # Create emotional state response
-    emotional_response = EmotionalStateResponse(
-        minion_id=minion_data["minion_id"],
-        mood=mood_response,
-        energy_level=emotional_state.get("energy_level", 0.8),
-        stress_level=emotional_state.get("stress_level", 0.2),
-        opinion_scores=opinion_scores,
-        last_updated=emotional_state.get("last_updated", datetime.now().isoformat()),
-        state_version=emotional_state.get("state_version", 1)
+    creation_date_iso = minion_data.get("creation_date", datetime.now().isoformat())
+
+    # Construct the nested persona response
+    persona_data_from_service = minion_data.get("persona", {})
+    persona_response = MinionPersonaResponse(
+        name=persona_data_from_service.get("name", "Unknown Name"),
+        base_personality=persona_data_from_service.get("base_personality", "Unknown Personality"),
+        quirks=persona_data_from_service.get("quirks", []),
+        catchphrases=persona_data_from_service.get("catchphrases", []),
+        expertise_areas=persona_data_from_service.get("expertise_areas", []),
+        allowed_tools=persona_data_from_service.get("allowed_tools", []),
+        model_name=persona_data_from_service.get("model_name", "unknown")
     )
-    
-    # Convert status enum
-    status_map = {
-        MinionStatus.ACTIVE: MinionStatusEnum.ACTIVE,
-        MinionStatus.IDLE: MinionStatusEnum.IDLE,
-        MinionStatus.BUSY: MinionStatusEnum.BUSY,
-        MinionStatus.ERROR: MinionStatusEnum.ERROR
-    }
-    status = status_map.get(minion_data.get("status", MinionStatus.ACTIVE), MinionStatusEnum.ACTIVE)
-    
+
     return MinionResponse(
-        id=minion_data["minion_id"],
-        name=minion_data["name"],
-        personality=minion_data["personality"],
-        status=status,
+        id=minion_data.get("minion_id", "unknown_id"), # Use .get for safety
+        status=validated_api_status_enum,
         emotional_state=emotional_response,
-        quirks=minion_data.get("quirks", []),
-        catchphrases=minion_data.get("catchphrases", []),
-        expertise=minion_data.get("expertise", []),
-        spawn_time=minion_data.get("spawn_time", datetime.now()).isoformat(),
-        last_activity=minion_data.get("last_activity", datetime.now()).isoformat()
+        persona=persona_response, # Assign the constructed nested persona
+        creation_date=creation_date_iso
     )
 
 
@@ -304,9 +330,9 @@ async def send_minion_message(
     """Have a minion send a message to a channel"""
     try:
         success = await minion_service.send_message(
-            minion_id=minion_id,
-            channel=request.channel,
-            message=request.message
+            minion_id=minion_id,             # This comes from the URL path parameter
+            channel_id=request.channel_id, # Corrected: Use channel_id from SendMessageRequest
+            content=request.content        # Corrected: Use content from SendMessageRequest
         )
         
         if not success:
@@ -315,7 +341,7 @@ async def send_minion_message(
         return OperationResponse(
             status="sent",
             id=minion_id,
-            message=f"Message sent to {request.channel}",
+            message=f"Message sent to channel '{request.channel_id}'", # Corrected: use request.channel_id
             timestamp=datetime.now().isoformat()
         )
         

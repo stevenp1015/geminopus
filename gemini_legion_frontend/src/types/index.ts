@@ -47,7 +47,7 @@ export interface Minion {
   minion_id: string
   persona: MinionPersona
   emotional_state: EmotionalState
-  spawn_time: string
+  creation_date: string // Changed from spawn_time to align with backend
   status: 'active' | 'idle' | 'busy' | 'error' | 'rebooting'
   current_task?: Task
   memory_stats?: {
@@ -62,7 +62,7 @@ export type ChannelType = 'public' | 'private' | 'dm'
 export type MessagePriority = 'low' | 'normal' | 'high' | 'urgent'
 
 export interface Channel {
-  channel_id: string
+  id: string // Changed from channel_id to align with backend API response
   name: string
   type: ChannelType
   description?: string

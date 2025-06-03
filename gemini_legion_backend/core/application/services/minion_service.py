@@ -9,7 +9,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 import logging
 import asyncio
-from dataclasses import asdict
+from dataclasses import asdict, is_dataclass # Added is_dataclass
 import uuid # Import uuid
 
 from ...domain import (
@@ -18,7 +18,8 @@ from ...domain import (
     EmotionalState,
     MoodVector,
     WorkingMemory,
-    Experience
+    Experience,
+    MinionStatus # Import MinionStatus domain object
 )
 from ...infrastructure.adk.agents import MinionAgent, MinionFactory
 from ...infrastructure.adk.emotional_engine import EmotionalEngine
@@ -34,6 +35,14 @@ logger = logging.getLogger(__name__)
 
 
 class MinionService:
+    # Define status enum strings directly for mapping, avoiding API layer import
+    # These should align with api.rest.schemas.MinionStatusEnum
+    _STATUS_ENUM_ACTIVE = "active"
+    _STATUS_ENUM_IDLE = "idle"
+    _STATUS_ENUM_BUSY = "busy"
+    _STATUS_ENUM_ERROR = "error"
+    _STATUS_ENUM_REBOOTING = "rebooting" # Though current mapping logic doesn't produce this
+
     """
     Application service for Minion operations
     
@@ -164,27 +173,31 @@ class MinionService:
                     "minion_spawned",
                     {"minion": minion_data_for_broadcast}
                 ))
+                # Use a serializable status for the event, e.g., health_status or a simple "active" string
+                # status_for_event = minion.status.health_status if minion and minion.status else "unknown"
+                mapped_status_string = self._map_domain_status_to_api_enum_string(minion.status) if minion and minion.status else self._STATUS_ENUM_ERROR
                 asyncio.create_task(connection_manager.broadcast_service_event(
                     "minion_status_changed",
-                    {"minion_id": minion_id, "status": minion.status} # Use status from domain object
+                    {"minion_id": minion_id, "status": mapped_status_string}
                 ))
             
             # Return minion details
             # Ensure the returned status is consistent with what was broadcast
-            current_status = minion.status if minion else "active"
-            spawn_time_iso = minion.spawn_time.isoformat() if minion and hasattr(minion, 'spawn_time') else datetime.now().isoformat()
+            # current_status = minion.status if minion else "active" # This was the object
+            mapped_status_string_for_return = self._map_domain_status_to_api_enum_string(minion.status) if minion and minion.status else self._STATUS_ENUM_ERROR
+            creation_date_iso = minion.creation_date.isoformat() if minion and hasattr(minion, 'creation_date') else datetime.now().isoformat()
             emotional_state_dict = asdict(minion.emotional_state) if minion and minion.emotional_state else None
 
             return {
                 "minion_id": minion_id,
                 "name": name,
-                "status": current_status,
+                "status": mapped_status_string_for_return,
                 "personality": personality,
                 "quirks": quirks,
                 "expertise": expertise,
                 "catchphrases": catchphrases,
-                "tools": tools, # Ensure this matches the new parameter name
-                "spawn_time": spawn_time_iso,
+                "tools": tools,# Ensure this matches the new parameter name
+                "creation_date": creation_date_iso, # Changed from spawn_time
                 "emotional_state": emotional_state_dict
             }
             
@@ -476,16 +489,18 @@ class MinionService:
             "minion_despawned",
             {"minion_id": minion_id, "minion_name": minion_name}
         ))
+        # "inactive" is not part of MinionStatusEnum, frontend might not handle it.
+        # Mapping to ERROR for now, or consider adding INACTIVE to the enum and frontend.
         asyncio.create_task(connection_manager.broadcast_service_event(
             "minion_status_changed",
-            {"minion_id": minion_id, "status": "inactive"}
+            {"minion_id": minion_id, "status": self._STATUS_ENUM_ERROR } # Was "inactive"
         ))
         
         logger.info(f"Deactivated minion {minion_id}")
         
         return {
             "minion_id": minion_id,
-            "status": "inactive", # This is correct for the return value
+            "status": self._STATUS_ENUM_ERROR, # Was "inactive"
             "timestamp": datetime.now().isoformat()
         }
     
@@ -500,7 +515,7 @@ class MinionService:
                     try:
                         if hasattr(agent, 'minion'):
                             # Update emotional state
-                            agent.minion.emotional_state = await agent.emotional_engine.get_current_state()
+                            agent.minion.emotional_state = agent.emotional_engine.get_current_state() # Removed await
                             
                             # Save to repository
                             await self.repository.save(agent.minion)
@@ -525,7 +540,7 @@ class MinionService:
                         # Simple health check - ensure agent is responsive
                         # In a real system, this would be more sophisticated
                         if hasattr(agent, 'emotional_engine'):
-                            await agent.emotional_engine.get_current_state()
+                            agent.emotional_engine.get_current_state() # Removed await
                         
                     except Exception as e:
                         logger.error(f"Health check failed for {minion_id}: {e}")
@@ -574,21 +589,115 @@ class MinionService:
         except Exception as e:
             logger.error(f"Failed to load existing minions: {e}")
     
+    def _map_domain_status_to_api_enum_string(self, domain_status: Optional[MinionStatus]) -> str:
+        """Maps domain MinionStatus object to an API enum string."""
+        if not domain_status:
+            return self._STATUS_ENUM_ERROR
+
+        # Logic adapted from api.rest.endpoints.minions.convert_minion_to_response
+        if not domain_status.is_active:
+            return self._STATUS_ENUM_ERROR # Consider an INACTIVE if defined in enum
+        elif domain_status.health_status == "error":
+            return self._STATUS_ENUM_ERROR
+        elif domain_status.health_status == "operational":
+            if domain_status.current_task:
+                return self._STATUS_ENUM_BUSY
+            else:
+                return self._STATUS_ENUM_IDLE
+        elif domain_status.health_status == "degraded":
+            # Consider a DEGRADED enum if defined, maps to ACTIVE for now
+            return self._STATUS_ENUM_ACTIVE
+        else: # Unknown health_status but is_active
+            return self._STATUS_ENUM_ACTIVE
+        # REBOOTING status is not derivable from current domain_status fields with this logic
+
     def _minion_to_dict(self, minion: Minion) -> Dict[str, Any]:
         """Convert domain Minion to API-friendly dictionary"""
+        
+        mapped_status = self._map_domain_status_to_api_enum_string(minion.status)
+
+        # Prepare a nested persona dictionary
+        persona_dict = {
+            "name": minion.persona.name,
+            "base_personality": minion.persona.base_personality,
+            "quirks": minion.persona.quirks if hasattr(minion.persona, 'quirks') else [],
+            "catchphrases": minion.persona.catchphrases if hasattr(minion.persona, 'catchphrases') else [],
+            "expertise_areas": minion.persona.expertise_areas if hasattr(minion.persona, 'expertise_areas') else [],
+            "allowed_tools": minion.persona.allowed_tools if hasattr(minion.persona, 'allowed_tools') else [],
+            "model_name": minion.persona.model_name if hasattr(minion.persona, 'model_name') else "unknown"
+            # Not including minion_id here as it's at the top level of the Minion object
+        }
+
         return {
             "minion_id": minion.minion_id,
-            "name": minion.persona.name,
-            "status": minion.status,
-            "personality": minion.persona.base_personality,
-            "quirks": minion.persona.quirks,
-            "catchphrases": minion.persona.catchphrases,
-            "expertise_areas": minion.persona.expertise_areas,
-            "allowed_tools": minion.persona.allowed_tools,
-            "spawn_time": minion.spawn_time.isoformat(),
+            "persona": persona_dict, # Nested persona object
+            "status": mapped_status, # Use the mapped string enum
+            "creation_date": minion.creation_date.isoformat(),
             "emotional_state": {
-                "mood": asdict(minion.emotional_state.mood),
-                "energy_level": minion.emotional_state.energy_level,
-                "stress_level": minion.emotional_state.stress_level
-            }
+                "mood": asdict(m.mood) if (m := minion.emotional_state) and hasattr(m, 'mood') and is_dataclass(m.mood) else (getattr(m, 'mood', None) if (m := minion.emotional_state) else None),
+                "energy_level": m.energy_level if (m := minion.emotional_state) and hasattr(m, 'energy_level') else 0.8,
+                "stress_level": m.stress_level if (m := minion.emotional_state) and hasattr(m, 'stress_level') else 0.2,
+                "opinion_scores": {
+                    entity_id: asdict(score) if is_dataclass(score) else score
+                    for entity_id, score in m.opinion_scores.items()
+                } if (m := minion.emotional_state) and hasattr(m, 'opinion_scores') and m.opinion_scores else {},
+                "last_updated": m.last_updated.isoformat() if (m := minion.emotional_state) and hasattr(m, 'last_updated') and m.last_updated else datetime.now().isoformat(),
+                "state_version": m.state_version if (m := minion.emotional_state) and hasattr(m, 'state_version') else 1
+            } if minion.emotional_state else None
         }
+
+    async def send_message(
+        self,
+        minion_id: str,
+        channel_id: str, # Changed from 'channel' to 'channel_id' for clarity and consistency
+        content: str     # Changed from 'message' to 'content' for clarity
+    ) -> bool:
+        """
+        Allows a specific minion to send a message to a channel.
+        This is called by the /api/minions/{minion_id}/send-message endpoint.
+        """
+        logger.info(f"MinionService: Minion '{minion_id}' attempting to send message to channel '{channel_id}': \"{content[:50]}...\"")
+        
+        agent = self.active_agents.get(minion_id)
+        if not agent:
+            logger.error(f"MinionService: Minion '{minion_id}' not found or not active. Cannot send message.")
+            # Consider raising a specific exception an endpoint can catch for a 404 vs 500
+            return False # Or raise ValueError(f"Minion {minion_id} not active")
+
+        if not self.comm_system:
+            logger.error("MinionService: Communication system is not initialized. Cannot send message.")
+            return False # Or raise Exception("Communication system not available")
+
+        try:
+            # Assuming comm_system has a method like send_message_as_minion or similar
+            # that can take the minion_id, channel_id, and the message content.
+            # The IDEAL_ARCHITECTURE_DESIGN_DOCUMENT.md shows:
+            # ConversationalLayer.send_message(from_minion: str, to_channel: str, message: str, ...)
+            # We'll map our parameters to that.
+            
+            # We also need to consider if the minion should "think" or just relay.
+            # For now, let's assume it's a relay via the comm_system.
+            # A more advanced version might involve agent.think(f"I need to say '{content}' in channel '{channel_id}'")
+            
+            # IDEAL_ARCHITECTURE_DESIGN_DOCUMENT.md section 5.1 shows InterMinionCommunicationSystem
+            # has a conversational_layer which has the send_message method.
+            # Parameter names must match the definition in ConversationalLayer.send_message
+            # which are likely from_minion, to_channel, message as per IDEAL_ARCHITECTURE_DESIGN_DOCUMENT.md
+            await self.comm_system.conversational_layer.send_message(
+                from_minion=minion_id,     # Corrected keyword to match expected 'from_minion'
+                to_channel=channel_id,      # Corrected keyword to match expected 'to_channel'
+                message=content            # Corrected keyword to match expected 'message'
+                # We could potentially pass personality_modifiers if available and supported
+            )
+            
+            logger.info(f"MinionService: Message successfully sent by minion '{minion_id}' to channel '{channel_id}'.")
+            
+            # The message itself should be broadcast to clients (including the sender's UI)
+            # by the InterMinionCommunicationSystem when it processes the message for the channel.
+            # So, no explicit broadcast here, relying on comm_system's duties.
+            return True
+            
+        except Exception as e:
+            logger.error(f"MinionService: Error during send_message for minion '{minion_id}' to channel '{channel_id}': {e}", exc_info=True)
+            # This will likely result in a 500 if not caught specifically by the endpoint
+            raise # Re-raise to let the endpoint handle it as a 500 or a more specific error

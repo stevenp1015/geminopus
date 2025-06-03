@@ -19,11 +19,12 @@ const MinionCard = ({ minion }: MinionCardProps) => {
     ? 'text-red-400' 
     : 'text-yellow-400'
   
-  const statusColors = {
+  const statusColors: Record<Minion['status'], string> = {
     active: 'bg-green-400',
     idle: 'bg-yellow-400',
     busy: 'bg-orange-400',
-    offline: 'bg-gray-400'
+    error: 'bg-red-500',
+    rebooting: 'bg-blue-500',
   }
   
   return (
@@ -43,7 +44,7 @@ const MinionCard = ({ minion }: MinionCardProps) => {
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
         <div>
-          <h3 className="text-lg font-bold text-white">{minion.persona.name}</h3>
+          <h3 className="text-lg font-bold text-white">{minion.persona?.name}</h3>
           <p className="text-sm text-gray-400 mt-1">{minion.minion_id}</p>
         </div>
         <div className="flex items-center space-x-2">
@@ -54,7 +55,7 @@ const MinionCard = ({ minion }: MinionCardProps) => {
       
       {/* Personality */}
       <p className="text-sm text-gray-300 mb-4 line-clamp-2">
-        {minion.persona.base_personality}
+        {minion.persona?.base_personality}
       </p>
       
       {/* Stats */}
@@ -80,7 +81,7 @@ const MinionCard = ({ minion }: MinionCardProps) => {
         <div className="flex items-center space-x-2">
           <MessageCircle className="w-4 h-4 text-blue-400" />
           <span className="text-xs text-gray-400">
-            Memory: {minion.memory_count || 0}
+            Memory: {minion.memory_stats?.working_memory_items || 0}
           </span>
         </div>
       </div>
@@ -89,7 +90,7 @@ const MinionCard = ({ minion }: MinionCardProps) => {
       {minion.current_task && (
         <div className="mt-4 pt-4 border-t border-legion-primary/10">
           <p className="text-xs text-gray-400">Current Task:</p>
-          <p className="text-sm text-white mt-1 line-clamp-1">{minion.current_task}</p>
+          <p className="text-sm text-white mt-1 line-clamp-1">{minion.current_task.title}</p>
         </div>
       )}
     </motion.div>

@@ -1,19 +1,33 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Hash, Lock, Bot, Plus, Search, ChevronDown, ChevronRight } from 'lucide-react'
-import { useLegionStore } from '../../store/legionStore'
+// import { useLegionStore } from '../../store/legionStore'; // No longer needed for these specific items
+import { useChatStore } from '../../store/chatStore'; // Import useChatStore
 import { Channel } from '../../types/communication'
 
 const ChannelSidebar = () => {
-  const { channels, selectedChannelId, selectChannel, createChannel } = useLegionStore()
+  // Destructure all channel-related state and actions from useChatStore
+  const { channels, selectedChannelId, selectChannel, createChannel } = useChatStore();
+  console.log('[ChannelSidebar] Store values - channels:', JSON.parse(JSON.stringify(channels)), 'selectedChannelId:', selectedChannelId);
   const [searchQuery, setSearchQuery] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
   
   // Group channels by type
-  const publicChannels = Object.values(channels).filter(c => c.type === 'public')
-  const privateChannels = Object.values(channels).filter(c => c.type === 'private')
-  const directMessages = Object.values(channels).filter(c => c.type === 'dm')
+  // Fallback for channels to prevent error if it's momentarily undefined or null,
+  // though chatStore initializes it as {}.
+  const currentChannels = channels || {};
+  console.log('[ChannelSidebar] currentChannels (after fallback):', JSON.parse(JSON.stringify(currentChannels)));
+  
+  const allChannelsFromStore = Object.values(currentChannels);
+  console.log('[ChannelSidebar] allChannelsFromStore (from Object.values):', JSON.parse(JSON.stringify(allChannelsFromStore)));
+
+  const publicChannels = allChannelsFromStore.filter(c => c.type === 'public')
+  const privateChannels = allChannelsFromStore.filter(c => c.type === 'private')
+  const directMessages = allChannelsFromStore.filter(c => c.type === 'dm')
+  console.log('[ChannelSidebar] Filtered - publicChannels:', JSON.parse(JSON.stringify(publicChannels)));
+  console.log('[ChannelSidebar] Filtered - privateChannels:', JSON.parse(JSON.stringify(privateChannels)));
+  console.log('[ChannelSidebar] Filtered - directMessages:', JSON.parse(JSON.stringify(directMessages)));
   
   // Filter channels based on search
   const filterChannels = (channelList: Channel[]) => {
@@ -34,14 +48,18 @@ const ChannelSidebar = () => {
   }
   
   const ChannelItem = ({ channel }: { channel: Channel }) => {
-    const isSelected = channel.channel_id === selectedChannelId
+    console.log('[ChannelItem] Rendering for channel:', JSON.parse(JSON.stringify(channel)), 'ID for key:', channel.id); // Changed to channel.id
+    const isSelected = channel.id === selectedChannelId // Changed to channel.id
     const Icon = channel.type === 'public' ? Hash : channel.type === 'private' ? Lock : Bot
     
     return (
       <motion.button
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
-        onClick={() => selectChannel(channel.channel_id)}
+        onClick={() => {
+          console.log('[ChannelItem] Clicked. Calling selectChannel with ID:', channel.id); // Changed to channel.id
+          selectChannel(channel.id); // Changed to channel.id
+        }}
         className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
           isSelected 
             ? 'bg-legion-primary/20 text-white' 
@@ -73,6 +91,17 @@ const ChannelSidebar = () => {
     
     if (filteredChannels.length === 0 && searchQuery) return null
     
+    console.log(`[ChannelSection: ${title}] Props channels:`, JSON.parse(JSON.stringify(channels)));
+    console.log(`[ChannelSection: ${title}] Filtered channels for render (length ${filteredChannels.length}):`, JSON.parse(JSON.stringify(filteredChannels)));
+
+    if (filteredChannels.length === 0 && searchQuery) {
+        console.log(`[ChannelSection: ${title}] No filtered channels to render due to search query.`);
+        return null;
+    }
+    if (filteredChannels.length === 0 && !searchQuery) { // Log if section is empty even without search
+        console.log(`[ChannelSection: ${title}] No channels in this section (even without search).`);
+    }
+    
     return (
       <div className="mb-4">
         <button
@@ -93,9 +122,15 @@ const ChannelSidebar = () => {
             exit={{ opacity: 0, height: 0 }}
             className="mt-1 space-y-1"
           >
-            {filteredChannels.map(channel => (
-              <ChannelItem key={channel.channel_id} channel={channel} />
-            ))}
+            {filteredChannels.map(channel => {
+              console.log(`[ChannelSection: ${title}] Mapping channel for ChannelItem:`, JSON.parse(JSON.stringify(channel)), 'Using key:', channel.id); // Changed to channel.id
+              if (channel.id === undefined) { // Changed to channel.id
+                console.error(`[ChannelSection: ${title}] FATAL: Rendering ChannelItem with undefined id!`, channel);
+              }
+              return (
+                <ChannelItem key={channel.id} channel={channel} /> // Changed to channel.id
+              );
+            })}
           </motion.div>
         )}
       </div>

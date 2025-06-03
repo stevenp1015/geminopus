@@ -20,7 +20,8 @@ from ....domain import (
     MinionPersona,
     EmotionalState,
     MoodVector,
-    Experience
+    Experience,
+    WorkingMemory  # Added this cheeky bastard
 )
 from ...messaging.communication_system import InterMinionCommunicationSystem
 from ...messaging.safeguards import CommunicationSafeguards
@@ -94,7 +95,6 @@ class MinionFactory:
         """
         # Create persona
         persona = MinionPersona(
-            minion_id=minion_id,
             name=name,
             base_personality=base_personality,
             quirks=quirks,
@@ -111,8 +111,9 @@ class MinionFactory:
             emotional_state=self._create_initial_emotional_state(
                 minion_id, initial_mood
             ),
-            spawn_time=datetime.now(),
-            status="active"
+            working_memory=WorkingMemory(), # Added working memory
+            creation_date=datetime.now(), # Changed from spawn_time
+            # status will use default_factory from Minion dataclass
         )
         
         # Create emotional engine

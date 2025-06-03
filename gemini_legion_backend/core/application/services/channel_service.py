@@ -22,8 +22,13 @@ from ...domain import (
     ChannelMember,
     ChannelRole
 )
+# Import ConversationalMessage if it's not already implicitly available or re-defined
+from ...infrastructure.messaging.communication_system import InterMinionCommunicationSystem, ConversationalMessage
 from ...infrastructure.persistence.repositories import ChannelRepository, MessageRepository
-from ...infrastructure.messaging.communication_system import InterMinionCommunicationSystem
+# minion_service import might cause circular dependency if MinionService also imports ChannelService.
+# For now, assuming it's okay or handled by DI framework if types are only for hinting.
+# If MinionService is only used for type hinting here, forward reference might be better:
+# MinionService = "project_name.core.application.services.minion_service.MinionService"
 from .minion_service import MinionService
 
 
@@ -163,8 +168,12 @@ class ChannelService:
             # Add to active channels
             self.active_channels[channel_id] = channel
             
-            # Register with communication system
-            self.comm_system.create_channel(channel_id)
+            # Register with communication system (conceptually)
+            self.comm_system.create_channel(channel_id) # Informs comm_system channel exists
+            
+            # CRITICAL: Subscribe the WebSocket broadcaster callback to this new channel
+            self.comm_system.subscribe_to_channel(channel_id, self._websocket_broadcaster_callback)
+            logger.info(f"ChannelService: Subscribed _websocket_broadcaster_callback to newly created channel '{channel_id}'.")
             
             # Auto-add general minions to public channels
             if channel_type == "public":
@@ -724,11 +733,53 @@ class ChannelService:
             if channel_config["channel_id"] not in self.active_channels:
                 await self.create_channel(**channel_config, creator="system")
     
+    async def _websocket_broadcaster_callback(self, routed_message: ConversationalMessage):
+        """
+        Callback for MessageRouter. Takes a routed ConversationalMessage,
+        converts it to a dict, and broadcasts via WebSocket connection_manager.
+        """
+        try:
+            logger.info(f"ChannelService: _websocket_broadcaster_callback for channel '{routed_message.channel}' from '{routed_message.sender}'.")
+            
+            # Convert ConversationalMessage to the dict format expected by frontend clients
+            message_dict_for_ws = {
+                "id": f"msg_{routed_message.channel}_{routed_message.timestamp.timestamp()}_{routed_message.sender}",
+                "channel_id": routed_message.channel,
+                "sender_id": routed_message.sender,
+                "content": routed_message.content,
+                "message_type": MessageType.CHAT.value, # Assuming CHAT type for minion messages via this path
+                "timestamp": routed_message.timestamp.isoformat(),
+                "metadata": routed_message.personality_hints or {} # Pass personality_hints as metadata
+            }
+            
+            await connection_manager.broadcast_service_event(
+                "message_sent", # This should match the event frontend listens for (same as ChannelService.send_message)
+                {"channel_id": routed_message.channel, "message": message_dict_for_ws}
+            )
+            logger.info(f"ChannelService: Successfully broadcast 'message_sent' via WebSocket for channel '{routed_message.channel}'.")
+        except Exception as e:
+            logger.error(f"ChannelService: Error in _websocket_broadcaster_callback: {e}", exc_info=True)
+
     def _setup_comm_system_integration(self):
-        """Set up callbacks from communication system"""
-        # This would integrate with the actual messaging infrastructure
-        # For now, it's a placeholder for the integration point
-        pass
+        """
+        Set up callbacks from InterMinionCommunicationSystem's MessageRouter.
+        This service will subscribe to messages routed internally and broadcast them via WebSocket.
+        """
+        logger.info("ChannelService: Setting up _websocket_broadcaster_callback for active and future channels.")
+        
+        # Define a wrapper that MessageRouter can call (it expects a non-async callable that takes one arg)
+        # No, MessageRouter can handle async callbacks because it uses asyncio.gather.
+        
+        # Subscribe for all currently known active channels
+        # This is called during ChannelService.start() after _load_active_channels()
+        for channel_id in self.active_channels.keys():
+            self.comm_system.subscribe_to_channel(channel_id, self._websocket_broadcaster_callback)
+            logger.info(f"ChannelService: Subscribed _websocket_broadcaster_callback to existing channel '{channel_id}'.")
+
+        # We also need to subscribe when a new channel is created.
+        # This will be done by adding a line in self.create_channel.
+        # This ensures messages from MinionService (which go through comm_system directly)
+        # get picked up by ChannelService and broadcasted over WebSocket.
     
     async def _auto_add_minions_to_public_channel(self, channel_id: str):
         """Automatically add active minions to public channels"""

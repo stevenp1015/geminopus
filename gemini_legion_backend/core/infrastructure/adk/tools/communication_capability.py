@@ -69,7 +69,7 @@ class SendMessageTool(BaseTool):
         self.comm_system = comm_system
         self.safeguards = safeguards
         self.personality_hints = personality_hints or {}
-        super().__init__()
+        super().__init__(name=self.name, description=self.description)
     
     async def execute(
         self,
@@ -158,7 +158,7 @@ class SubscribeChannelTool(BaseTool):
         self.comm_system = comm_system
         self.message_handler = message_handler
         self.subscriptions: Dict[str, bool] = {}
-        super().__init__()
+        super().__init__(name=self.name, description=self.description)
     
     async def execute(self, channel: str) -> Dict[str, Any]:
         """
@@ -239,7 +239,7 @@ class AutonomousCommunicationTool(BaseTool):
         self.minion = minion
         self.autonomous_engine = autonomous_engine
         self.comm_system = comm_system
-        super().__init__()
+        super().__init__(name=self.name, description=self.description)
     
     async def execute(
         self,

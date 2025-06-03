@@ -21,6 +21,13 @@ class MinionStatusEnum(str, Enum):
     REBOOTING = "rebooting"
 
 
+class ChannelTypeEnum(str, Enum):
+    """Channel type classification"""
+    PUBLIC = "public"
+    PRIVATE = "private"
+    DM = "dm" # Direct Message
+
+
 class MessageTypeEnum(str, Enum):
     """Message types"""
     CHAT = "chat"
@@ -92,15 +99,25 @@ class CreateChannelRequest(BaseModel):
 
 
 class SendMessageRequest(BaseModel):
-    """Request to send a message"""
-    sender: str = Field(..., description="Sender ID (commander or minion_id)")
-    content: str = Field(..., min_length=1, max_length=4000)
+    """Request for a minion to send a message to a channel."""
+    # minion_id is implicitly part of the URL path: /api/minions/{minion_id}/send-message
+    # However, the body validation was asking for 'sender'.
+    # Let's align this. The sender *is* the minion_id from the path.
+    # The service layer `minion_service.send_message(minion_id, channel, message)`
+    # implies the endpoint should extract these.
+    
+    # Based on the 422 error for 'sender', and the endpoint trying to use 'request.channel' and 'request.message'
+    # A consistent model would be:
+    sender: str = Field(..., description="Sender ID (must match the minion_id in the URL path)")
+    channel_id: str = Field(..., description="ID of the channel to send the message to")
+    content: str = Field(..., min_length=1, max_length=4000, description="The message content")
     
     class Config:
         schema_extra = {
             "example": {
-                "sender": "commander",
-                "content": "Great work on the analysis, team! What's our next priority?"
+                "sender": "minion_abc123", # This would be the minion_id from the URL
+                "channel_id": "general",
+                "content": "Reporting for duty in #general!"
             }
         }
 
@@ -131,6 +148,17 @@ class CreateTaskRequest(BaseModel):
 
 
 # --- Response Models ---
+
+class MinionPersonaResponse(BaseModel):
+    """Nested persona information for a Minion"""
+    name: str
+    base_personality: str
+    quirks: List[str] = Field(default_factory=list)
+    catchphrases: List[str] = Field(default_factory=list)
+    expertise_areas: List[str] = Field(default_factory=list) # Aligned with domain
+    allowed_tools: List[str] = Field(default_factory=list)   # Aligned with domain
+    model_name: Optional[str] = "unknown" # Aligned with domain
+
 
 class MoodVectorResponse(BaseModel):
     """Mood vector representation"""
@@ -164,22 +192,21 @@ class EmotionalStateResponse(BaseModel):
 class MinionResponse(BaseModel):
     """Minion information"""
     id: str
-    name: str
-    personality: str
+    # name, personality, quirks, catchphrases, expertise are now in the nested persona object
     status: MinionStatusEnum
     emotional_state: EmotionalStateResponse
-    quirks: List[str] = Field(default_factory=list)
-    catchphrases: List[str] = Field(default_factory=list)
-    expertise: List[str] = Field(default_factory=list)
+    persona: MinionPersonaResponse # Added nested persona
+    creation_date: str
 
 
 class ChannelResponse(BaseModel):
     """Channel information"""
     id: str
     name: str
-    description: str
+    description: Optional[str] = None # Make description optional to match frontend type
+    type: ChannelTypeEnum # Added channel type
     members: List[str]
-    is_private: bool
+    is_private: bool # Keep for now, can be used to derive type if domain model uses it
     created_at: Optional[str] = None
 
 

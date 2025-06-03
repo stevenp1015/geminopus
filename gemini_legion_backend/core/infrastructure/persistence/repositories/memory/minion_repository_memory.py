@@ -72,7 +72,7 @@ class MinionRepositoryMemory(MinionRepository):
             # Get all minions sorted by spawn time
             all_minions = sorted(
                 self._minions.values(),
-                key=lambda m: m.spawn_time,
+                key=lambda m: m.creation_date,
                 reverse=True
             )
             
@@ -137,7 +137,7 @@ class MinionRepositoryMemory(MinionRepository):
             
             # Sort by last activity
             filtered_minions.sort(
-                key=lambda m: m.last_activity or m.spawn_time,
+                key=lambda m: m.last_activity or m.creation_date,
                 reverse=True
             )
             
@@ -236,7 +236,7 @@ class MinionRepositoryMemory(MinionRepository):
             
             # Sort by last activity
             filtered_minions.sort(
-                key=lambda m: m.last_activity or m.spawn_time,
+                key=lambda m: m.last_activity or m.creation_date,
                 reverse=True
             )
             

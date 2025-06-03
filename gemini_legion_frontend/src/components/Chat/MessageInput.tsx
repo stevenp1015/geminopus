@@ -26,22 +26,28 @@ const MessageInput = ({ channelId, currentMinionId }: MessageInputProps) => {
   }, [message])
   
   const handleSend = async () => {
-    if (!message.trim() || !currentMinionId) return
+    if (!message.trim() || !currentMinionId) {
+      console.warn('[MessageInput] handleSend: Message empty or currentMinionId missing.', { message: message.trim(), currentMinionId });
+      // Optionally, provide user feedback e.g., toast.error("Cannot send empty message or no minion selected.");
+      return;
+    }
     
-    await sendMessage({
-      channel_id: channelId,
-      content: message.trim(),
-      sender_id: currentMinionId,
-      sender_type: 'minion',
-      priority,
-      metadata: {
-        emotional_state: currentMinion?.emotional_state,
-        personality_hint: getPersonalityHint()
-      }
-    })
-    
-    setMessage('')
-    setPriority('normal')
+    try {
+      // Call sendMessage from legionStore with the 3 expected string arguments
+      await sendMessage(
+        channelId,
+        currentMinionId,
+        message.trim()
+      );
+      
+      setMessage('');
+      // Priority is not sent in this simplified call, but we can still reset it in the UI.
+      setPriority('normal');
+      // Personality hints and emotional state from metadata are also not sent in this version.
+    } catch (error) {
+      console.error('[MessageInput] Error calling sendMessage:', error);
+      // Toasting for the error is likely handled within legionStore.sendMessage itself now.
+    }
   }
   
   const handleKeyDown = (e: React.KeyboardEvent) => {

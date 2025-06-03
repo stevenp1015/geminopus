@@ -4,18 +4,20 @@ import LegionDashboard from './components/Legion/LegionDashboard'
 import ChatInterface from './components/Chat/ChatInterface'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useLegionStore } from './store/legionStore'
+import { useChatStore } from './store/chatStore' // Added import for chatStore
 import './App.css'
 
 function App() {
   const [activeView, setActiveView] = useState<'dashboard' | 'chat'>('dashboard')
   const { isConnected } = useWebSocket()
-  const { fetchMinions, fetchChannels } = useLegionStore()
+  const { fetchMinions } = useLegionStore() // Removed fetchChannels from legionStore
+  const { fetchChannels: fetchChatChannels } = useChatStore() // Get fetchChannels from chatStore
 
   useEffect(() => {
     // Initial data fetch
     fetchMinions()
-    fetchChannels()
-  }, [fetchMinions, fetchChannels])
+    fetchChatChannels() // Call fetchChannels from chatStore
+  }, [fetchMinions, fetchChatChannels])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-legion-darker via-legion-dark to-purple-950">

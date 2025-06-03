@@ -10,12 +10,29 @@ export const channelApi = {
    * List all channels
    */
   async list(): Promise<Channel[]> {
+    console.log('[channelApi] list: Fetching channels...');
     const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.channels.list}`, {
       method: 'GET',
       headers: getHeaders(),
-    })
-    const data = await handleAPIResponse<{ channels: Channel[], total: number }>(response)
-    return data.channels
+    });
+    console.log('[channelApi] list: Raw response status:', response.status);
+    // Clone the response to log its body, as body can only be read once
+    const responseCloneForLogging = response.clone();
+    try {
+      const rawText = await responseCloneForLogging.text();
+      console.log('[channelApi] list: Raw response text:', rawText);
+    } catch (e) {
+      console.error('[channelApi] list: Error reading raw response text for logging:', e);
+    }
+
+    const data = await handleAPIResponse<{ channels: Channel[], total: number }>(response);
+    console.log('[channelApi] list: Processed data:', data);
+    if (data && data.channels) {
+      console.log('[channelApi] list: Returning channels:', data.channels);
+      return data.channels;
+    }
+    console.warn('[channelApi] list: Processed data did not contain channels or data itself was nullish. Returning empty array.');
+    return []; // Fallback to empty array if data.channels is not as expected
   },
 
   /**

@@ -48,13 +48,13 @@ export const useChatStore = create<ChatState>()(
       // Channel actions
       setChannels: (channels) => set({
         channels: channels.reduce((acc, channel) => {
-          acc[channel.channel_id] = channel
+          acc[channel.id] = channel // Changed from channel_id
           return acc
         }, {} as Record<string, Channel>)
       }),
       
       addChannel: (channel) => set((state) => ({
-        channels: { ...state.channels, [channel.channel_id]: channel }
+        channels: { ...state.channels, [channel.id]: channel } // Changed from channel_id
       })),
       
       updateChannel: (channelId, updates) => set((state) => ({
@@ -76,7 +76,12 @@ export const useChatStore = create<ChatState>()(
         }
       }),
       
-      selectChannel: (channelId) => set({ selectedChannelId: channelId }),
+      selectChannel: (channelId) => {
+        const oldSelectedChannelId = get().selectedChannelId;
+        console.log(`[ChatStore] selectChannel called. Old ID: ${oldSelectedChannelId}, New ID: ${channelId}`);
+        set({ selectedChannelId: channelId });
+        console.log(`[ChatStore] selectChannel: selectedChannelId has been set to: ${get().selectedChannelId}`);
+      },
       
       // Message actions
       addMessage: (channelId, message) => set((state) => ({
@@ -98,8 +103,8 @@ export const useChatStore = create<ChatState>()(
           get().setChannels(channels)
           
           // Auto-select first channel if none selected
-          if (!get().selectedChannelId && channels.length > 0) {
-            set({ selectedChannelId: channels[0].channel_id })
+          if (!get().selectedChannelId && channels.length > 0 && channels[0]) { // Added channels[0] check
+            set({ selectedChannelId: channels[0].id }) // Changed from channel_id
           }
         } catch (error) {
           console.error('Failed to fetch channels:', error)
@@ -125,14 +130,14 @@ export const useChatStore = create<ChatState>()(
         try {
           const channel = await channelApi.create({
             name,
-            type,
+            channel_type: type, // Corrected: 'type' to 'channel_type' for the API call
             members: memberIds || []
           })
           get().addChannel(channel)
           toast.success(`Channel #${name} created!`)
           
           // Auto-select the new channel
-          set({ selectedChannelId: channel.channel_id })
+          set({ selectedChannelId: channel.id }) // Changed from channel_id
         } catch (error) {
           console.error('Failed to create channel:', error)
           toast.error('Failed to create channel')
@@ -165,7 +170,7 @@ export const useChatStore = create<ChatState>()(
           const channel = get().channels[channelId]
           if (channel) {
             get().updateChannel(channelId, {
-              members: [...channel.members, minionId]
+              participants: [...channel.participants, minionId] // Corrected: 'members' to 'participants'
             })
           }
           
@@ -185,7 +190,7 @@ export const useChatStore = create<ChatState>()(
           const channel = get().channels[channelId]
           if (channel) {
             get().updateChannel(channelId, {
-              members: channel.members.filter(id => id !== minionId)
+              participants: channel.participants.filter((id: string) => id !== minionId) // Corrected: 'members' to 'participants', added type for 'id'
             })
           }
           

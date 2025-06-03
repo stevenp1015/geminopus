@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Hash, Users, Lock, Bot, ChevronLeft } from 'lucide-react'
 import { useLegionStore } from '../../store/legionStore'
+import { useChatStore } from '../../store/chatStore' // Added chatStore import
 import MessageList from './MessageList'
 import MessageInput from './MessageInput'
 import ChannelSidebar from './ChannelSidebar'
@@ -9,14 +10,19 @@ import ParticipantsList from './ParticipantsList'
 import { Channel, Message } from '../../types/communication'
 
 const ChatInterface = () => {
-  const { channels, messages, selectedChannelId, minions, currentUser } = useLegionStore()
+  const { minions, selectedMinionId: legionSelectedMinionId } = useLegionStore() // Get selectedMinionId
+  const {
+    channels,
+    messages: chatStoreMessages,
+    selectedChannelId
+  } = useChatStore()
   const [showSidebar, setShowSidebar] = useState(true)
   const [showParticipants, setShowParticipants] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   
   const selectedChannel = selectedChannelId ? channels[selectedChannelId] : null
-  const channelMessages = selectedChannelId 
-    ? messages.filter(m => m.channel_id === selectedChannelId)
+  const channelMessages = selectedChannelId && chatStoreMessages[selectedChannelId]
+    ? chatStoreMessages[selectedChannelId]
     : []
   
   // Auto-scroll to bottom when new messages arrive
@@ -109,15 +115,15 @@ const ChatInterface = () => {
           <div className="flex-1 flex flex-col">
             {selectedChannel ? (
               <>
-                <MessageList 
-                  messages={channelMessages} 
+                <MessageList
+                  messages={channelMessages}
                   minions={minions}
-                  currentUserId={currentUser?.id}
+                  currentUserId={legionSelectedMinionId === null ? undefined : legionSelectedMinionId}
                 />
                 <div ref={messagesEndRef} />
-                <MessageInput 
-                  channelId={selectedChannel.channel_id}
-                  currentMinionId={currentUser?.selected_minion_id}
+                <MessageInput
+                  channelId={selectedChannel.id} // Changed from channel_id to id
+                  currentMinionId={legionSelectedMinionId === null ? undefined : legionSelectedMinionId}
                 />
               </>
             ) : (

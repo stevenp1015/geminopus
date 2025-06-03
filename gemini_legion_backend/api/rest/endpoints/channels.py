@@ -13,6 +13,7 @@ from ..schemas import (
     CreateChannelRequest,
     SendMessageRequest,
     ChannelResponse,
+    ChannelTypeEnum, # Added import for ChannelTypeEnum
     ChannelsListResponse,
     MessageResponse,
     MessagesListResponse,
@@ -30,15 +31,31 @@ router = APIRouter(prefix="/api/channels", tags=["channels"])
 
 def convert_channel_to_response(channel_data: dict) -> ChannelResponse:
     """Convert channel data to API response format"""
+    is_private = channel_data.get("is_private", False)
+    
+    # Determine channel type based on is_private
+    # Assuming no 'dm' type differentiation from this data source for now.
+    channel_type = ChannelTypeEnum.PRIVATE if is_private else ChannelTypeEnum.PUBLIC
+    
+    # Extract members carefully, assuming members can be a list of strings (IDs) or list of dicts
+    members_data = channel_data.get("members", [])
+    member_ids = []
+    if members_data:
+        if isinstance(members_data[0], dict): # If it's a list of dicts like {"member_id": "..."}
+            member_ids = [str(member_info["member_id"]) for member_info in members_data if isinstance(member_info, dict) and "member_id" in member_info]
+        elif isinstance(members_data[0], str): # If it's already a list of strings
+            member_ids = [str(member_id) for member_id in members_data]
+
+
     return ChannelResponse(
-        id=channel_data["channel_id"],
-        name=channel_data["name"],
-        description=channel_data.get("description", ""),
-        members=[member_info["member_id"] for member_info in channel_data.get("members", []) if isinstance(member_info, dict) and "member_id" in member_info],
-        is_private=channel_data.get("is_private", False),
-        created_at=channel_data.get("created_at", datetime.now().isoformat()),
-        message_count=channel_data.get("message_count", 0),
-        last_activity=channel_data.get("last_activity", None)
+        id=str(channel_data["channel_id"]), # Ensure ID is string
+        name=str(channel_data["name"]),
+        description=str(channel_data.get("description", "")) if channel_data.get("description") is not None else None,
+        type=channel_type, # Set the new type field
+        members=member_ids,
+        is_private=is_private, # Keep is_private as it's in the schema for now
+        created_at=str(channel_data.get("created_at", datetime.now().isoformat()))
+        # message_count and last_activity are not in the current ChannelResponse Pydantic model
     )
 
 

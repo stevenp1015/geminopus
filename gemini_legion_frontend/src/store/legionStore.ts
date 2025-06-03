@@ -3,40 +3,42 @@ import { devtools } from 'zustand/middleware'
 import { io, Socket } from 'socket.io-client'
 import toast from 'react-hot-toast'
 import { minionApi, channelApi, WS_BASE_URL, API_BASE_URL } from '../services/api'
-import type { Minion, Channel, Message } from '../types'
+import type { Minion as MinionType, Channel as ChannelType, Message as MessageType } from '../types'
+
+export type { MinionType as Minion, ChannelType as Channel, MessageType as Message }
 
 interface LegionState {
   // State
-  minions: Record<string, Minion>
-  channels: Record<string, Channel>
-  messages: Record<string, Message[]>
+  minions: Record<string, MinionType>
+  // channels: Record<string, ChannelType> // Moved to chatStore
+  messages: Record<string, MessageType[]> // Keeping messages here for now, though might also move to chatStore
   selectedMinionId: string | null
-  selectedChannelId: string | null
+  selectedChannelId: string | null // Keep selectedChannelId if other legion parts need it, or move to chatStore
   websocket: Socket | null
   loading: boolean
   error: string | null
   
   // Actions
-  setMinions: (minions: Minion[]) => void
-  addMinion: (minion: Minion) => void
-  updateMinion: (minionId: string, updates: Partial<Minion>) => void
+  setMinions: (minions: MinionType[]) => void
+  addMinion: (minion: MinionType) => void
+  updateMinion: (minionId: string, updates: Partial<MinionType>) => void
   removeMinion: (minionId: string) => void
   selectMinion: (minionId: string | null) => void
   
-  setChannels: (channels: Channel[]) => void
-  addChannel: (channel: Channel) => void
-  updateChannel: (channelId: string, updates: Partial<Channel>) => void
-  selectChannel: (channelId: string | null) => void
+  // setChannels: (channels: ChannelType[]) => void // Moved to chatStore
+  // addChannel: (channel: ChannelType) => void // Moved to chatStore
+  // updateChannel: (channelId: string, updates: Partial<ChannelType>) => void // Moved to chatStore
+  selectChannel: (channelId: string | null) => void // Keep if selectedChannelId remains, for UI sync
   
-  addMessage: (channelId: string, message: Message) => void
-  setMessages: (channelId: string, messages: Message[]) => void
+  addMessage: (channelId: string, message: MessageType) => void
+  setMessages: (channelId: string, messages: MessageType[]) => void
   
   connectWebSocket: () => void
   disconnectWebSocket: () => void
   
   // API calls
   fetchMinions: () => Promise<void>
-  fetchChannels: () => Promise<void>
+  // fetchChannels: () => Promise<void> // Moved to chatStore
   fetchMessages: (channelId: string) => Promise<void>
   spawnMinion: (config: any) => Promise<void>
   sendMessage: (channelId: string, minionId: string, content: string) => Promise<void>
@@ -49,7 +51,7 @@ export const useLegionStore = create<LegionState>()(
     (set, get) => ({
       // Initial state
       minions: {},
-      channels: {},
+      // channels: {}, // Moved to chatStore
       messages: {},
       selectedMinionId: null,
       selectedChannelId: null,
@@ -62,19 +64,57 @@ export const useLegionStore = create<LegionState>()(
         minions: minions.reduce((acc, minion) => {
           acc[minion.minion_id] = minion
           return acc
-        }, {} as Record<string, Minion>)
+        }, {} as Record<string, MinionType>)
       }),
       
-      addMinion: (minion) => set((state) => ({
-        minions: { ...state.minions, [minion.minion_id]: minion }
-      })),
-      
-      updateMinion: (minionId, updates) => set((state) => ({
-        minions: {
-          ...state.minions,
-          [minionId]: { ...state.minions[minionId], ...updates }
+      addMinion: (minion) => {
+        console.log('[LegionStore] addMinion called with:', JSON.parse(JSON.stringify(minion)));
+        if (!minion || !minion.minion_id) {
+          console.error('[LegionStore] addMinion: Attempted to add minion with invalid ID or undefined minion object.', minion);
+          return;
         }
-      })),
+        if (!minion.persona) {
+            console.warn('[LegionStore] addMinion: Minion object is missing persona.', JSON.parse(JSON.stringify(minion)));
+        } else if (!minion.persona.name) {
+            console.warn('[LegionStore] addMinion: Minion persona is missing name.', JSON.parse(JSON.stringify(minion)));
+        }
+
+        set((state) => {
+          if (state.minions[minion.minion_id]) {
+            console.log(`[LegionStore] addMinion: Minion ${minion.minion_id} already exists. Overwriting.`, 'Old:', state.minions[minion.minion_id], 'New:', minion);
+          }
+          return {
+            minions: { ...state.minions, [minion.minion_id]: minion }
+          };
+        });
+      },
+      
+      updateMinion: (minionId, updates) => {
+        console.log('[LegionStore] updateMinion called for:', minionId, 'with updates:', JSON.parse(JSON.stringify(updates)));
+        set((state) => {
+          const existingMinion = state.minions[minionId];
+          console.log('[LegionStore] Existing minion before update:', JSON.parse(JSON.stringify(existingMinion)));
+          const updatedMinion = { ...existingMinion, ...updates };
+          console.log('[LegionStore] Minion after update:', JSON.parse(JSON.stringify(updatedMinion)));
+          
+          // Defensive check: if persona existed and updates doesn't have it, log a warning
+          if (existingMinion && existingMinion.persona && (!updates.persona && !('persona' in updates))) {
+            console.warn(`[LegionStore] updateMinion for ${minionId}: Persona existed but was not in updates. Preserving old persona if updates didn't explicitly nullify it.`);
+            // This logic might be too aggressive if updates *can* legitimately remove persona.
+            // For now, let's see if 'updates' is the culprit.
+          }
+          if (updatedMinion.persona === undefined && existingMinion && existingMinion.persona !== undefined) {
+            console.error(`[LegionStore] FATAL: Persona for ${minionId} became undefined after update!`, 'Existing:', existingMinion, 'Updates:', updates, 'Result:', updatedMinion);
+          }
+
+          return {
+            minions: {
+              ...state.minions,
+              [minionId]: updatedMinion
+            }
+          };
+        });
+      },
       
       removeMinion: (minionId) => set((state) => {
         const newMinions = { ...state.minions }
@@ -84,26 +124,11 @@ export const useLegionStore = create<LegionState>()(
       
       selectMinion: (minionId) => set({ selectedMinionId: minionId }),
       
-      // Channel actions
-      setChannels: (channels) => set({
-        channels: channels.reduce((acc, channel) => {
-          acc[channel.channel_id] = channel
-          return acc
-        }, {} as Record<string, Channel>)
-      }),
-      
-      addChannel: (channel) => set((state) => ({
-        channels: { ...state.channels, [channel.channel_id]: channel }
-      })),
-      
-      updateChannel: (channelId, updates) => set((state) => ({
-        channels: {
-          ...state.channels,
-          [channelId]: { ...state.channels[channelId], ...updates }
-        }
-      })),
-      
-      selectChannel: (channelId) => set({ selectedChannelId: channelId }),
+      // Channel actions (MOVED TO chatStore - only selectChannel might remain if needed by non-chat UI)
+      // setChannels: (channels) => set({ ... }), // Moved
+      // addChannel: (channel) => set((state) => ({ ... })), // Moved
+      // updateChannel: (channelId, updates) => set((state) => ({ ... })), // Moved
+      selectChannel: (channelId) => set({ selectedChannelId: channelId }), // Kept for now
       
       // Message actions
       addMessage: (channelId, message) => set((state) => ({
@@ -138,8 +163,15 @@ export const useLegionStore = create<LegionState>()(
         
         // Minion events
         ws.on('minion_spawned', (data: any) => {
-          get().addMinion(data.minion)
-          toast.success(`${data.minion.name} has joined the Legion!`)
+          // Ensure data.minion is what we expect (MinionType)
+          // Our backend _minion_to_dict now ensures persona is nested.
+          if (data.minion && data.minion.persona) {
+            get().addMinion(data.minion as MinionType); // Cast if confident about structure
+            toast.success(`${data.minion.persona.name || data.minion.minion_id} has joined the Legion!`);
+          } else {
+            console.error('[LegionStore] minion_spawned event received malformed minion data:', data);
+            toast.error('A new minion tried to join, but its data was corrupted!');
+          }
         })
         
         ws.on('minion_despawned', (data: any) => {
@@ -293,19 +325,7 @@ export const useLegionStore = create<LegionState>()(
         }
       },
       
-      fetchChannels: async () => {
-        set({ loading: true, error: null })
-        try {
-          const channels = await channelApi.list()
-          get().setChannels(channels)
-        } catch (error) {
-          console.error('Failed to fetch channels:', error)
-          toast.error('Failed to fetch channels')
-          set({ error: (error as Error).message })
-        } finally {
-          set({ loading: false })
-        }
-      },
+      // fetchChannels: async () => { ... }, // Moved to chatStore
       
       fetchMessages: async (channelId: string) => {
         try {
@@ -341,10 +361,11 @@ export const useLegionStore = create<LegionState>()(
           
           const result = await response.json()
           
-          // Fetch the newly created minion
-          const minion = await minionApi.get(result.id)
-          get().addMinion(minion)
-          toast.success(`Spawned ${config.name}! ${result.message}`)
+          // Fetch the newly created minion - REMOVED
+          // const minion = await minionApi.get(result.id)
+          // get().addMinion(minion) - REMOVED
+          // Rely on the minion_spawned WebSocket event to add the minion to the store.
+          toast.success(`Spawning ${config.name}! ${result.message}`)
         } catch (error) {
           console.error('Failed to spawn minion:', error)
           toast.error('Failed to spawn minion')
@@ -353,29 +374,55 @@ export const useLegionStore = create<LegionState>()(
       },
       
       sendMessage: async (channelId: string, minionId: string, content: string) => {
+        // This function is for a Minion to send a message to a channel via an HTTP API endpoint.
+        // As per GRANULAR_TODO.md: "legionStore.ts -> sendMessage() -> Call API endpoint (via minion endpoint)"
+        // The original code had WS_BASE_URL with fetch, causing "URL scheme ws not supported".
+        // It also had a mismatch with MessageInput.tsx's payload.
+        // For now, we fix the URL and keep the simpler payload.
+        // MessageInput.tsx will be adjusted to call this with these 3 string args.
+        
+        if (!minionId) {
+          const errMsg = "Minion ID is undefined, cannot send message as minion.";
+          console.error(`[LegionStore] ${errMsg}`);
+          toast.error(errMsg);
+          throw new Error(errMsg);
+        }
+
         try {
-          // Use the minion's send-message endpoint
-          const response = await fetch(`${WS_BASE_URL}/api/minions/${minionId}/send-message`, {
+          console.log(`[LegionStore] sendMessage: minion '${minionId}' sending to channel '${channelId}': "${content}"`);
+          // Use API_BASE_URL for HTTP calls, not WS_BASE_URL
+          const response = await fetch(`${API_BASE_URL}/api/minions/${minionId}/send-message`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              channel: channelId,
-              message: content
+              sender: minionId,       // Align with the updated SendMessageRequest schema
+              channel_id: channelId,  // Align with the updated SendMessageRequest schema
+              content: content        // Align with the updated SendMessageRequest schema
             })
-          })
+          });
           
           if (!response.ok) {
-            throw new Error(`Failed to send message: ${response.statusText}`)
+            const errorData = await response.text();
+            console.error(`[LegionStore] Failed to send message. Status: ${response.status}, Response: ${errorData}`);
+            throw new Error(`Failed to send message: ${response.statusText} - ${errorData}`);
           }
           
-          // The message will come through WebSocket events
-          toast.success('Message sent!')
+          // Assuming the message will come back via WebSocket for UI update.
+          toast.success('Message sent by minion!');
+          // Note: The original function signature `sendMessage(channelId, minionId, content)`
+          // matches the payload ` { channel: channelId, message: content } `.
+          // The backend API for `/api/minions/{minion_id}/send-message`
+          // (connected to `minion_service.send_message`) needs to align with this.
+          // The `MessageInput.tsx` was attempting to send a much richer object.
         } catch (error) {
-          console.error('Failed to send message:', error)
-          toast.error('Failed to send message')
-          throw error
+          console.error('[LegionStore] Error in sendMessage:', error);
+          // Avoid double-toasting if it's a pre-emptive error like undefined minionId
+          if (!(error instanceof Error && error.message.startsWith("Minion ID is undefined"))) {
+             toast.error(`Send failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          }
+          throw error;
         }
       },
       

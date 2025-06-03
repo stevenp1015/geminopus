@@ -29,6 +29,13 @@ logger = logging.getLogger(__name__)
 
 
 class MinionAgent(LlmAgent):
+    minion_id: str  # Declare minion_id as a field for Pydantic
+    persona: MinionPersona # Good practice to declare other key attributes too
+    emotional_engine: EmotionalEngine
+    memory_system: MinionMemorySystem
+    communication_capability: Optional[CommunicationCapability]
+    minion: Optional[Any] # Domain Minion object
+
     """
     Base Minion agent leveraging ADK idiomatically
     
@@ -71,13 +78,25 @@ class MinionAgent(LlmAgent):
         
         # Initialize parent LlmAgent
         super().__init__(
-            name=minion_id,
+            name=persona.name,  # Use the actual persona name
             model=persona.model_name,
             instruction=instruction,
             tools=minion_tools,
+            # Pass other MinionAgent-specific fields to super()
+            # so Pydantic can recognize them during model initialization.
+            minion_id=minion_id,
+            persona=persona,
+            emotional_engine=emotional_engine,
+            memory_system=memory_system,
+            communication_capability=communication_capability,
+            minion=minion,
             **kwargs
         )
         
+        # These assignments are still okay, Pydantic should have initialized
+        # the fields via super() now. If LlmAgent's __init__ doesn't use these
+        # kwargs to set fields, these explicit assignments are crucial.
+        # If it does, they might be redundant but harmless.
         self.minion_id = minion_id
         self.persona = persona
         self.emotional_engine = emotional_engine

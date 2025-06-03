@@ -424,8 +424,19 @@ class ConnectionManager:
                 # Our disconnect logic handles SID leaving rooms.
                 # For now, just broadcast the event.
                 pass
+            
+            elif event_name_from_service == "minion_status_changed":
+                minion_id = event_data.get("minion_id")
+                if minion_id:
+                    target_room = f"minion_{minion_id}"
+                    # custom_payload is already event_data which contains {"minion_id": ..., "status": ...}
+                    # target_event_name is already correctly set to "minion_status_changed"
+                else:
+                    logger.warning(f"'minion_status_changed' event missing minion_id for room targeting. Broadcasting to all. Event data: {event_data}")
+                    # Falls through to global broadcast if minion_id is not present in event_data
+                pass # Pass ensures it doesn't hit the final 'else' if minion_id was present
 
-            else:
+            else: # This will now catch genuinely unhandled events
                 logger.warning(f"Unhandled service event type for Socket.IO broadcast: {event_name_from_service}. Broadcasting as is to all.")
             
             if target_room:

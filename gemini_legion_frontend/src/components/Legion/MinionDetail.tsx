@@ -38,10 +38,10 @@ const MinionDetail = ({ minion }: MinionDetailProps) => {
     >
       {/* Header */}
       <div>
-        <h2 className="text-2xl font-bold text-white mb-2">{minion.persona.name}</h2>
+        <h2 className="text-2xl font-bold text-white mb-2">{minion.persona?.name || 'Unknown Name'}</h2>
         <p className="text-sm text-gray-400">{minion.minion_id}</p>
         <p className="text-sm text-gray-500 mt-1">
-          Spawned {format(new Date(minion.spawn_time), 'MMM d, yyyy h:mm a')}
+          Spawned {format(new Date(minion.creation_date), 'MMM d, yyyy h:mm a')}
         </p>
       </div>
       
@@ -49,7 +49,7 @@ const MinionDetail = ({ minion }: MinionDetailProps) => {
       <div>
         <h3 className="text-lg font-semibold text-white mb-2">Personality</h3>
         <p className="text-gray-300 text-sm leading-relaxed">
-          {minion.persona.base_personality}
+          {minion.persona?.base_personality || 'No personality defined.'}
         </p>
       </div>
       
@@ -143,11 +143,11 @@ const MinionDetail = ({ minion }: MinionDetailProps) => {
       )}
       
       {/* Quirks */}
-      {minion.persona.quirks.length > 0 && (
+      {(minion.persona?.quirks || []).length > 0 && (
         <div>
           <h3 className="text-lg font-semibold text-white mb-2">Quirks</h3>
           <div className="space-y-1">
-            {minion.persona.quirks.map((quirk: string, index: number) => (
+            {(minion.persona?.quirks || []).map((quirk: string, index: number) => (
               <div key={index} className="flex items-start space-x-2">
                 <Tag className="w-3 h-3 text-legion-accent mt-1 flex-shrink-0" />
                 <p className="text-sm text-gray-300">{quirk}</p>
@@ -158,11 +158,11 @@ const MinionDetail = ({ minion }: MinionDetailProps) => {
       )}
       
       {/* Catchphrases */}
-      {minion.persona.catchphrases.length > 0 && (
+      {(minion.persona?.catchphrases || []).length > 0 && (
         <div>
           <h3 className="text-lg font-semibold text-white mb-2">Catchphrases</h3>
           <div className="space-y-1">
-            {minion.persona.catchphrases.map((phrase: string, index: number) => (
+            {(minion.persona?.catchphrases || []).map((phrase: string, index: number) => (
               <div key={index} className="flex items-start space-x-2">
                 <Quote className="w-3 h-3 text-legion-primary mt-1 flex-shrink-0" />
                 <p className="text-sm text-gray-300 italic">"{phrase}"</p>
@@ -173,11 +173,11 @@ const MinionDetail = ({ minion }: MinionDetailProps) => {
       )}
       
       {/* Tools */}
-      {minion.persona.allowed_tools.length > 0 && (
+      {(minion.persona?.allowed_tools || []).length > 0 && (
         <div>
           <h3 className="text-lg font-semibold text-white mb-2">Allowed Tools</h3>
           <div className="flex flex-wrap gap-2">
-            {minion.persona.allowed_tools.map((tool: string, index: number) => (
+            {(minion.persona?.allowed_tools || []).map((tool: string, index: number) => (
               <div key={index} className="flex items-center space-x-1 bg-legion-primary/20 px-2 py-1 rounded-md">
                 <Wrench className="w-3 h-3 text-legion-primary" />
                 <span className="text-xs text-gray-300">{tool}</span>
