@@ -12,6 +12,7 @@ interface ChatState {
   selectedChannelId: string | null
   loadingMessages: boolean
   error: string | null
+  commanderCanSendMessages: boolean
   
   // Actions
   setChannels: (channels: Channel[]) => void
@@ -28,6 +29,7 @@ interface ChatState {
   fetchMessages: (channelId: string) => Promise<void>
   createChannel: (name: string, type: 'public' | 'private', memberIds?: string[]) => Promise<void>
   sendMessage: (channelId: string, senderId: string, content: string) => Promise<void>
+  sendCommanderMessage: (channelId: string, content: string) => Promise<void>
   addMemberToChannel: (channelId: string, minionId: string) => Promise<void>
   removeMemberFromChannel: (channelId: string, minionId: string) => Promise<void>
   
@@ -45,6 +47,7 @@ export const useChatStore = create<ChatState>()(
       selectedChannelId: null,
       loadingMessages: false,
       error: null,
+      commanderCanSendMessages: true,
       
       // Channel actions
       setChannels: (channels) => set({
@@ -162,6 +165,23 @@ export const useChatStore = create<ChatState>()(
         } catch (error) {
           console.error('Failed to send message:', error)
           toast.error('Failed to send message')
+          throw error
+        }
+      },
+
+      sendCommanderMessage: async (channelId: string, content: string) => {
+        console.log(`[ChatStore] sendCommanderMessage CALLED. Channel ID: ${channelId}, Content: "${content}"`);
+        if (!get().commanderCanSendMessages) {
+          toast.error('Commander messaging is currently disabled')
+          throw new Error('Commander messaging disabled')
+        }
+        
+        try {
+          // Delegate to the main sendMessage method
+          return await get().sendMessage(channelId, COMMANDER_ID, content)
+        } catch (error) {
+          console.error('Failed to send commander message:', error)
+          toast.error('Failed to send commander message')
           throw error
         }
       },

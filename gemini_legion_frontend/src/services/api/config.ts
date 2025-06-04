@@ -3,7 +3,7 @@
  */
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
-export const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8000'
+export const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || 'http://localhost:8000'
 
 export const API_ENDPOINTS = {
   // Health
@@ -25,7 +25,7 @@ export const API_ENDPOINTS = {
   channels: {
     list: '/api/channels/',
     get: (id: string) => `/api/channels/${id}`,
-    create: '/api/channels/',
+    create: '/api/channels/create',
     messages: (id: string) => `/api/channels/${id}/messages`,
     sendMessage: (id: string) => `/api/channels/${id}/send`,
     members: (id: string) => `/api/channels/${id}/members`,

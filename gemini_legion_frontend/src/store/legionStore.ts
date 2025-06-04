@@ -42,6 +42,7 @@ interface LegionState {
   fetchMessages: (channelId: string) => Promise<void>
   spawnMinion: (config: any) => Promise<void>
   sendMessage: (channelId: string, minionId: string, content: string) => Promise<void>
+  sendCommanderMessage: (channelId: string, content: string) => Promise<void>
   updateMinionPersona: (minionId: string, persona: any) => Promise<void>
   updateMinionEmotionalState: (minionId: string, state: any) => Promise<void>
 }
@@ -374,12 +375,9 @@ export const useLegionStore = create<LegionState>()(
       },
       
       sendMessage: async (channelId: string, minionId: string, content: string) => {
-        // This function is for a Minion to send a message to a channel via an HTTP API endpoint.
-        // As per GRANULAR_TODO.md: "legionStore.ts -> sendMessage() -> Call API endpoint (via minion endpoint)"
-        // The original code had WS_BASE_URL with fetch, causing "URL scheme ws not supported".
-        // It also had a mismatch with MessageInput.tsx's payload.
-        // For now, we fix the URL and keep the simpler payload.
-        // MessageInput.tsx will be adjusted to call this with these 3 string args.
+        // Unified message sending: delegate to chatStore for consistency
+        // This maintains backward compatibility while centralizing message logic
+        console.log(`[LegionStore] sendMessage DELEGATING to chatStore. Channel ID: ${channelId}, Minion ID: ${minionId}, Content: "${content}"`);
         
         if (!minionId) {
           const errMsg = "Minion ID is undefined, cannot send message as minion.";
@@ -389,39 +387,33 @@ export const useLegionStore = create<LegionState>()(
         }
 
         try {
-          console.log(`[LegionStore] sendMessage: minion '${minionId}' sending to channel '${channelId}': "${content}"`);
-          // Use API_BASE_URL for HTTP calls, not WS_BASE_URL
-          const response = await fetch(`${API_BASE_URL}/api/minions/${minionId}/send-message`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              sender: minionId,       // Align with the updated SendMessageRequest schema
-              channel_id: channelId,  // Align with the updated SendMessageRequest schema
-              content: content        // Align with the updated SendMessageRequest schema
-            })
-          });
+          // Import and delegate to chatStore for unified message handling
+          const { useChatStore } = await import('./chatStore');
+          const chatStore = useChatStore.getState();
           
-          if (!response.ok) {
-            const errorData = await response.text();
-            console.error(`[LegionStore] Failed to send message. Status: ${response.status}, Response: ${errorData}`);
-            throw new Error(`Failed to send message: ${response.statusText} - ${errorData}`);
-          }
+          // Use chatStore's sendMessage method for consistency
+          await chatStore.sendMessage(channelId, minionId, content);
           
-          // Assuming the message will come back via WebSocket for UI update.
-          toast.success('Message sent by minion!');
-          // Note: The original function signature `sendMessage(channelId, minionId, content)`
-          // matches the payload ` { channel: channelId, message: content } `.
-          // The backend API for `/api/minions/{minion_id}/send-message`
-          // (connected to `minion_service.send_message`) needs to align with this.
-          // The `MessageInput.tsx` was attempting to send a much richer object.
+          toast.success(`Message sent by ${minionId}`);
         } catch (error) {
-          console.error('[LegionStore] Error in sendMessage:', error);
-          // Avoid double-toasting if it's a pre-emptive error like undefined minionId
+          console.error('[LegionStore] Error in sendMessage delegation:', error);
           if (!(error instanceof Error && error.message.startsWith("Minion ID is undefined"))) {
              toast.error(`Send failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
+          throw error;
+        }
+      },
+
+      sendCommanderMessage: async (channelId: string, content: string) => {
+        // Convenience method for Steven (the Commander) to send messages
+        console.log(`[LegionStore] sendCommanderMessage delegating to chatStore. Channel: ${channelId}`);
+        try {
+          const { useChatStore } = await import('./chatStore');
+          const chatStore = useChatStore.getState();
+          
+          await chatStore.sendCommanderMessage(channelId, content);
+        } catch (error) {
+          console.error('[LegionStore] Error in sendCommanderMessage:', error);
           throw error;
         }
       },
