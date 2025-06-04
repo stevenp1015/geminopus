@@ -4,10 +4,11 @@ Minion-related API endpoints
 Handles creation, management, and interaction with Minions.
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import List, Optional, Dict, Any
 import logging
 from datetime import datetime
+import uuid # Added for generating memory_id
 
 from ..schemas import (
     CreateMinionRequest,
@@ -17,10 +18,21 @@ from ..schemas import (
     RebootMinionRequest,
     MoodVectorResponse,
     OpinionScoreResponse,
+    OpinionEventResponse, # Added for OpinionScoreResponse
+    EntityTypeEnum, # Added for OpinionScoreResponse
     EmotionalStateResponse,
     MinionPersonaResponse, # Added for nested persona
     MinionStatusEnum,
-    SendMessageRequest
+    SendMessageRequest,
+    UpdateMinionPersonaRequest,
+    UpdateEmotionalStateRequest, # Added for the endpoint
+    # Memory Schemas
+    MemoryListResponse,
+    AnyMemoryEntryResponse,
+    WorkingMemoryEntryResponse,
+    EpisodicMemoryEntryResponse,
+    WorkingMemoryEntryDetails,
+    EpisodicMemoryEntryDetails
 )
 from ....core.dependencies import get_minion_service
 from ....core.application.services import MinionService
@@ -52,14 +64,57 @@ def convert_minion_to_response(minion_data: Dict[str, Any]) -> MinionResponse:
         # Convert opinion scores
         opinion_scores_response = {}
         raw_opinion_scores = raw_emotional_state.get("opinion_scores", {})
-        for entity_id, opinion_data in raw_opinion_scores.items():
+        for entity_id, opinion_data_dict in raw_opinion_scores.items():
+            # Ensure opinion_data_dict is a dict
+            if not isinstance(opinion_data_dict, dict):
+                logger.warning(f"Skipping non-dict opinion_data for entity {entity_id} in minion {minion_data.get('minion_id')}")
+                continue
+
+            # Convert notable_events from service (expected to be list of dicts)
+            # to list of OpinionEventResponse
+            notable_events_response = []
+            raw_events = opinion_data_dict.get("notable_events", [])
+            if isinstance(raw_events, list):
+                for event_data in raw_events:
+                    if isinstance(event_data, dict):
+                        try:
+                            # Ensure timestamp is a datetime object if it's a string
+                            event_ts_str = event_data.get("timestamp")
+                            event_ts_dt = datetime.fromisoformat(event_ts_str) if isinstance(event_ts_str, str) else datetime.now()
+                            
+                            notable_events_response.append(OpinionEventResponse(
+                                event_id=event_data.get("event_id", str(uuid.uuid4())),
+                                description=event_data.get("description", "Unknown event"),
+                                timestamp=event_ts_dt,
+                                impact_on_trust=event_data.get("impact_on_trust"),
+                                impact_on_respect=event_data.get("impact_on_respect"),
+                                impact_on_affection=event_data.get("impact_on_affection"),
+                                metadata=event_data.get("metadata", {})
+                            ))
+                        except Exception as e_event:
+                            logger.error(f"Error converting notable event for entity {entity_id}: {e_event}, data: {event_data}")
+            
+            # Handle last_interaction_timestamp conversion
+            last_interaction_ts_str = opinion_data_dict.get("last_interaction_timestamp")
+            last_interaction_dt = None
+            if isinstance(last_interaction_ts_str, str):
+                try:
+                    last_interaction_dt = datetime.fromisoformat(last_interaction_ts_str)
+                except ValueError:
+                    logger.warning(f"Could not parse last_interaction_timestamp: {last_interaction_ts_str}")
+            elif isinstance(last_interaction_ts_str, datetime): # if service already provides datetime
+                last_interaction_dt = last_interaction_ts_str
+
+
             opinion_scores_response[entity_id] = OpinionScoreResponse(
-                trust=opinion_data.get("trust", 0.0),
-                respect=opinion_data.get("respect", 0.0),
-                affection=opinion_data.get("affection", 0.0),
-                overall_sentiment=opinion_data.get("overall_sentiment", 0.0)
-                # Note: domain OpinionScore might have more fields like interaction_count, last_interaction
-                # These are not in OpinionScoreResponse schema currently
+                entity_type=opinion_data_dict.get("entity_type", EntityTypeEnum.UNKNOWN), # Default to UNKNOWN
+                trust=opinion_data_dict.get("trust", 0.0),
+                respect=opinion_data_dict.get("respect", 0.0),
+                affection=opinion_data_dict.get("affection", 0.0),
+                interaction_count=opinion_data_dict.get("interaction_count", 0),
+                last_interaction_timestamp=last_interaction_dt,
+                notable_events=notable_events_response,
+                overall_sentiment=opinion_data_dict.get("overall_sentiment", 0.0)
             )
         
         emotional_response = EmotionalStateResponse(
@@ -108,7 +163,7 @@ def convert_minion_to_response(minion_data: Dict[str, Any]) -> MinionResponse:
     )
 
     return MinionResponse(
-        id=minion_data.get("minion_id", "unknown_id"), # Use .get for safety
+        minion_id=minion_data.get("minion_id", "unknown_id"), # Changed from id to minion_id
         status=validated_api_status_enum,
         emotional_state=emotional_response,
         persona=persona_response, # Assign the constructed nested persona
@@ -297,12 +352,24 @@ async def get_emotional_state(
 @router.post("/{minion_id}/update-emotional-state")
 async def update_emotional_state(
     minion_id: str,
-    updates: Dict[str, Any],
+    request: UpdateEmotionalStateRequest, # Changed from updates: Dict[str, Any]
     minion_service: MinionService = Depends(get_minion_service)
 ) -> OperationResponse:
-    """Update a minion's emotional state"""
+    """Update a minion's emotional state using a structured request."""
     try:
-        success = await minion_service.update_emotional_state(minion_id, updates)
+        # Pass only the fields that were actually set in the request
+        update_payload = request.dict(exclude_unset=True)
+        if not update_payload:
+            # Return a success if no actual updates were provided, or a 400 if that's preferred.
+            # For now, treating as a no-op success.
+            return OperationResponse(
+                status="no_op",
+                id=minion_id,
+                message="No emotional state changes provided.",
+                timestamp=datetime.now().isoformat()
+            )
+
+        success = await minion_service.update_emotional_state(minion_id, update_payload)
         
         if not success:
             raise HTTPException(status_code=404, detail="Minion not found")
@@ -319,6 +386,72 @@ async def update_emotional_state(
     except Exception as e:
         logger.error(f"Error updating emotional state for {minion_id}: {e}")
         raise HTTPException(status_code=500, detail="Error updating emotional state")
+
+
+@router.put("/{minion_id}/persona", response_model=MinionPersonaResponse)
+async def update_minion_persona(
+    minion_id: str,
+    request: UpdateMinionPersonaRequest,
+    minion_service: MinionService = Depends(get_minion_service)
+) -> MinionPersonaResponse:
+    """Update a minion's persona details."""
+    try:
+        updated_persona_data = await minion_service.update_minion_persona(minion_id, request)
+        if not updated_persona_data:
+            raise HTTPException(status_code=404, detail="Minion not found or persona update failed")
+        
+        # The service should return data that can be directly used by MinionPersonaResponse
+        # Assuming updated_persona_data is a dict matching MinionPersonaResponse fields
+        return MinionPersonaResponse(**updated_persona_data)
+        
+    except HTTPException:
+        raise
+    except ValueError as ve: # Catch specific validation or logic errors from service
+        logger.error(f"ValueError updating persona for {minion_id}: {ve}")
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Error updating persona for {minion_id}: {e}")
+        raise HTTPException(status_code=500, detail="Error updating minion persona")
+
+
+@router.get("/{minion_id}/memories", response_model=MemoryListResponse)
+async def get_minion_memories_endpoint(
+    minion_id: str,
+    memory_type: Optional[str] = Query(None, enum=["working", "episodic", "semantic", "procedural"]),
+    limit: int = Query(10, ge=1, le=100),
+    minion_service: MinionService = Depends(get_minion_service)
+) -> MemoryListResponse:
+    """Get memories for a specific minion, with optional type filtering."""
+    try:
+        service_memories_data = await minion_service.get_minion_memories(
+            minion_id=minion_id,
+            memory_type=memory_type, # Pass along the type filter
+            limit=limit
+        )
+        
+        if service_memories_data is None: # Service might return None if minion not found/not active
+             raise HTTPException(status_code=404, detail=f"Minion {minion_id} not found or no memories accessible.")
+
+        response_memories: List[AnyMemoryEntryResponse] = []
+        for mem_data in service_memories_data:
+            converted_mem = convert_service_memory_to_response(minion_id, mem_data)
+            if converted_mem:
+                response_memories.append(converted_mem)
+        
+        return MemoryListResponse(
+            memories=response_memories,
+            minion_id=minion_id,
+            memory_type_filter=memory_type,
+            total_returned=len(response_memories)
+        )
+    except ValueError as ve: # Catch errors from convert_service_memory_to_response or service layer
+        logger.error(f"ValueError retrieving memories for {minion_id}: {ve}")
+        raise HTTPException(status_code=400, detail=str(ve))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving memories for {minion_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error retrieving memories for minion {minion_id}")
 
 
 @router.post("/{minion_id}/send-message")

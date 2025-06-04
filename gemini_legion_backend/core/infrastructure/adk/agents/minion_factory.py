@@ -101,7 +101,9 @@ class MinionFactory:
             catchphrases=catchphrases or [],
             allowed_tools=allowed_tools or [],
             expertise_areas=expertise_areas or [],
-            model_name=kwargs.get('model_name', 'gemini-1.5-pro')
+            model_name=kwargs.get('model_name', MinionPersona.model_name),
+            temperature=kwargs.get('temperature', MinionPersona.temperature),
+            max_tokens=kwargs.get('max_tokens', MinionPersona.max_tokens)
         )
         
         # Create domain Minion object

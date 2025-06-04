@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Send, Zap, Heart, AlertCircle, Sparkles } from 'lucide-react'
-import { useLegionStore } from '../../store/legionStore'
+import { useChatStore, COMMANDER_ID } from '../../store/chatStore'
+import { useLegionStore } from '../../store/legionStore' // Keep for personality hints
 
 interface MessageInputProps {
   channelId: string
+  // currentMinionId is still used for displaying personality hints if a minion is selected
   currentMinionId?: string
 }
 
@@ -13,7 +15,8 @@ const MessageInput = ({ channelId, currentMinionId }: MessageInputProps) => {
   const [priority, setPriority] = useState<'low' | 'normal' | 'high' | 'urgent'>('normal')
   const [showPersonalityHints, setShowPersonalityHints] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const { sendMessage, minions } = useLegionStore()
+  const { sendMessage: sendChatMessage } = useChatStore()
+  const { minions } = useLegionStore() // Get minions for personality hints
   
   const currentMinion = currentMinionId ? minions[currentMinionId] : null
   
@@ -26,27 +29,26 @@ const MessageInput = ({ channelId, currentMinionId }: MessageInputProps) => {
   }, [message])
   
   const handleSend = async () => {
-    if (!message.trim() || !currentMinionId) {
-      console.warn('[MessageInput] handleSend: Message empty or currentMinionId missing.', { message: message.trim(), currentMinionId });
-      // Optionally, provide user feedback e.g., toast.error("Cannot send empty message or no minion selected.");
+    if (!message.trim() || !channelId) {
+      console.warn('[MessageInput] handleSend: Message empty or channelId missing.', { message: message.trim(), channelId });
+      // Optionally, provide user feedback e.g., toast.error("Cannot send empty message or no channel selected.");
       return;
     }
     
     try {
-      // Call sendMessage from legionStore with the 3 expected string arguments
-      await sendMessage(
+      // Call sendMessage from chatStore with channelId, COMMANDER_ID, and message
+      await sendChatMessage(
         channelId,
-        currentMinionId,
+        COMMANDER_ID,
         message.trim()
+        // Future: Pass priority or other metadata if chatStore.sendMessage supports it
       );
       
       setMessage('');
-      // Priority is not sent in this simplified call, but we can still reset it in the UI.
-      setPriority('normal');
-      // Personality hints and emotional state from metadata are also not sent in this version.
+      setPriority('normal'); // Reset UI priority
     } catch (error) {
-      console.error('[MessageInput] Error calling sendMessage:', error);
-      // Toasting for the error is likely handled within legionStore.sendMessage itself now.
+      console.error('[MessageInput] Error calling sendChatMessage:', error);
+      // Error handling, perhaps a toast notification
     }
   }
   
@@ -151,9 +153,9 @@ const MessageInput = ({ channelId, currentMinionId }: MessageInputProps) => {
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={currentMinion ? `Message as ${currentMinion.persona.name}...` : 'Select a minion to send messages'}
-            disabled={!currentMinionId}
-            className="w-full bg-black/40 border border-legion-primary/20 rounded-lg px-4 py-3 text-white placeholder-gray-500 
+            placeholder="Message as Commander..."
+            disabled={!channelId}
+            className="w-full bg-black/40 border border-legion-primary/20 rounded-lg px-4 py-3 text-white placeholder-gray-500
                      focus:outline-none focus:border-legion-primary/40 resize-none min-h-[48px] max-h-[120px]
                      disabled:opacity-50 disabled:cursor-not-allowed"
             rows={1}
@@ -184,7 +186,7 @@ const MessageInput = ({ channelId, currentMinionId }: MessageInputProps) => {
           {/* Send Button */}
           <button
             onClick={handleSend}
-            disabled={!message.trim() || !currentMinionId}
+            disabled={!message.trim() || !channelId}
             className="p-3 bg-legion-primary hover:bg-legion-primary/80 disabled:bg-gray-700 disabled:cursor-not-allowed
                      text-white rounded-lg transition-colors"
           >

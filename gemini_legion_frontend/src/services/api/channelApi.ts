@@ -52,13 +52,21 @@ export const channelApi = {
   async create(data: {
     name: string
     description?: string
-    channel_type: 'public' | 'private' | 'direct'
+    channel_type: 'public' | 'private' | 'direct' // Keep for input clarity
     members?: string[]
   }): Promise<Channel> {
+    // Transform channel_type to is_private for the backend
+    const is_private = data.channel_type === 'private' || data.channel_type === 'direct';
+    const payload = {
+      name: data.name,
+      description: data.description,
+      members: data.members,
+      is_private: is_private,
+    };
     const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.channels.create}`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify(data),
+      body: JSON.stringify(payload), // Send transformed payload
     })
     return handleAPIResponse<Channel>(response)
   },

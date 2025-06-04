@@ -218,7 +218,7 @@ export const useLegionStore = create<LegionState>()(
             const channel = chatStore.channels[data.channel_id]
             if (channel) {
               chatStore.updateChannel(data.channel_id, {
-                participants: [...channel.participants, data.minion_id]
+                members: [...channel.members, data.minion_id] // Changed participants to members
               })
             }
           })
@@ -230,7 +230,7 @@ export const useLegionStore = create<LegionState>()(
             const channel = chatStore.channels[data.channel_id]
             if (channel) {
               chatStore.updateChannel(data.channel_id, {
-                participants: channel.participants.filter(id => id !== data.minion_id)
+                members: channel.members.filter((id: string) => id !== data.minion_id) // Changed participants to members, added type for id
               })
             }
           })
@@ -440,8 +440,8 @@ export const useLegionStore = create<LegionState>()(
       
       updateMinionEmotionalState: async (minionId: string, state: any) => {
         try {
-          // Use the update-emotional-state endpoint
-          const response = await fetch(`${WS_BASE_URL}/api/minions/${minionId}/update-emotional-state`, {
+          // Use the update-emotional-state endpoint with API_BASE_URL
+          const response = await fetch(`${API_BASE_URL}/api/minions/${minionId}/update-emotional-state`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

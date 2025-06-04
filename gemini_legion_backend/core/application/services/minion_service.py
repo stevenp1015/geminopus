@@ -21,6 +21,7 @@ from ...domain import (
     Experience,
     MinionStatus # Import MinionStatus domain object
 )
+from ....api.rest.schemas import UpdateMinionPersonaRequest # For type hinting
 from ...infrastructure.adk.agents import MinionAgent, MinionFactory
 from ...infrastructure.adk.emotional_engine import EmotionalEngine
 from ...infrastructure.adk.memory_system import MinionMemorySystem
@@ -370,6 +371,150 @@ class MinionService:
         ))
 
         return updated_state_dict
+
+    async def update_minion_persona(
+        self,
+        minion_id: str,
+        persona_updates_request: UpdateMinionPersonaRequest
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Update a minion's persona, including model configuration.
+        If model_name or other critical agent parameters change, the agent will be recreated.
+        """
+        minion_domain_object = await self.repository.get_by_id(minion_id)
+        if not minion_domain_object:
+            logger.warning(f"Minion {minion_id} not found in repository for persona update.")
+            return None
+
+        updated_fields = persona_updates_request.dict(exclude_unset=True)
+        if not updated_fields:
+            logger.info(f"No fields to update for minion {minion_id} persona.")
+            return self._minion_to_dict(minion_domain_object).get("persona")
+
+        current_persona = minion_domain_object.persona
+        
+        # Track if changes require agent recreation vs. just a prompt update
+        requires_agent_recreation = False
+        persona_changed_fields_for_prompt_only = False
+
+        # Apply updates to the MinionPersona object and determine impact
+        if "model_name" in updated_fields and updated_fields["model_name"] != current_persona.model_name:
+            current_persona.model_name = updated_fields["model_name"]
+            requires_agent_recreation = True
+        
+        if "temperature" in updated_fields and updated_fields["temperature"] != current_persona.temperature:
+            current_persona.temperature = updated_fields["temperature"]
+            requires_agent_recreation = True
+
+        if "max_tokens" in updated_fields and updated_fields["max_tokens"] != current_persona.max_tokens:
+            current_persona.max_tokens = updated_fields["max_tokens"]
+            requires_agent_recreation = True
+        
+        if "name" in updated_fields and updated_fields["name"] != current_persona.name:
+            current_persona.name = updated_fields["name"]
+            requires_agent_recreation = True # ADK LlmAgent's 'name' is usually an init parameter
+        
+        if "allowed_tools" in updated_fields and set(updated_fields["allowed_tools"]) != set(current_persona.allowed_tools or []):
+            current_persona.allowed_tools = updated_fields["allowed_tools"]
+            requires_agent_recreation = True
+
+        # Fields that primarily affect the prompt
+        if "base_personality" in updated_fields and updated_fields["base_personality"] != current_persona.base_personality:
+            current_persona.base_personality = updated_fields["base_personality"]
+            persona_changed_fields_for_prompt_only = True
+        if "quirks" in updated_fields and updated_fields["quirks"] != current_persona.quirks:
+            current_persona.quirks = updated_fields["quirks"]
+            persona_changed_fields_for_prompt_only = True
+        if "catchphrases" in updated_fields and updated_fields["catchphrases"] != current_persona.catchphrases:
+            current_persona.catchphrases = updated_fields["catchphrases"]
+            persona_changed_fields_for_prompt_only = True
+        if "expertise_areas" in updated_fields and updated_fields["expertise_areas"] != current_persona.expertise_areas:
+            current_persona.expertise_areas = updated_fields["expertise_areas"]
+            persona_changed_fields_for_prompt_only = True
+
+        minion_domain_object.persona = current_persona # Assign the updated persona
+        await self.repository.save(minion_domain_object)
+        logger.info(f"Minion {minion_id} persona updated in repository. Requires agent recreation: {requires_agent_recreation}")
+
+        active_agent_instance = self.active_agents.get(minion_id)
+
+        if active_agent_instance and requires_agent_recreation:
+            logger.info(f"Recreating agent for Minion {minion_id} due to critical persona change.")
+            try:
+                await active_agent_instance.shutdown()
+                logger.info(f"Old agent for {minion_id} shutdown successfully.")
+            except Exception as e:
+                logger.error(f"Error shutting down old agent for {minion_id}: {e}", exc_info=True)
+            
+            if minion_id in self.active_agents: # Ensure it's removed if shutdown failed to do so
+                del self.active_agents[minion_id]
+
+            try:
+                # Re-create the agent using the factory with all parameters from the updated minion_domain_object's persona.
+                # The MinionFactory.create_minion will internally construct a new MinionPersona,
+                # so we need to pass all relevant fields from our updated minion_domain_object.persona.
+                # It also creates a new domain.Minion object for the agent.
+                new_agent_instance = await self.minion_factory.create_minion(
+                    minion_id=minion_domain_object.minion_id,
+                    name=minion_domain_object.persona.name,
+                    base_personality=minion_domain_object.persona.base_personality,
+                    quirks=minion_domain_object.persona.quirks,
+                    catchphrases=minion_domain_object.persona.catchphrases,
+                    expertise_areas=minion_domain_object.persona.expertise_areas,
+                    allowed_tools=minion_domain_object.persona.allowed_tools,
+                    enable_communication=bool(active_agent_instance.communication_capability if active_agent_instance and hasattr(active_agent_instance, 'communication_capability') else True),
+                    initial_mood=minion_domain_object.emotional_state.mood if minion_domain_object.emotional_state and hasattr(minion_domain_object.emotional_state, 'mood') else None,
+                    # Pass model-specific params via **kwargs for MinionFactory to pick up
+                    model_name=minion_domain_object.persona.model_name,
+                    temperature=minion_domain_object.persona.temperature,
+                    max_tokens=minion_domain_object.persona.max_tokens
+                )
+                # The factory creates a new domain.Minion instance for the agent.
+                # To ensure data consistency with what we saved (e.g., creation_date, full emotional state),
+                # we should ideally make the factory accept an existing domain.Minion to "revive" an agent for,
+                # or ensure the new agent created by the factory accurately reflects the saved state.
+                # For now, we assume the factory correctly reinitializes based on the persona and the agent
+                # will then sync its state if needed. The new_agent_instance.minion will be the one created by the factory.
+                self.active_agents[minion_id] = new_agent_instance
+                logger.info(f"New agent for {minion_id} created and activated with updated persona.")
+
+            except Exception as e:
+                logger.error(f"CRITICAL ERROR: Failed to recreate agent {minion_id} with updated persona: {e}", exc_info=True)
+                minion_domain_object.status.health_status = "error"
+                minion_domain_object.status.is_active = False
+                await self.repository.save(minion_domain_object)
+                asyncio.create_task(connection_manager.broadcast_service_event(
+                    "minion_status_changed",
+                    {"minion_id": minion_id, "status": self._STATUS_ENUM_ERROR }
+                ))
+                raise # Propagate error to API layer
+
+        elif active_agent_instance and persona_changed_fields_for_prompt_only and not requires_agent_recreation:
+            # Only non-critical, prompt-affecting fields changed. Update live agent's persona and instruction.
+            active_agent_instance.persona = current_persona
+            active_agent_instance.instruction = active_agent_instance._build_instruction(
+                current_persona,
+                active_agent_instance.emotional_engine
+            )
+            logger.info(f"Live agent {minion_id} instructions updated for non-critical persona change.")
+        elif not active_agent_instance and requires_agent_recreation:
+            logger.info(f"Minion {minion_id} was not active. Persona (requiring agent recreation) updated in repository for future activation.")
+        elif not active_agent_instance and persona_changed_fields_for_prompt_only:
+             logger.info(f"Minion {minion_id} was not active. Persona (prompt-only fields) updated in repository.")
+
+
+        updated_minion_data_for_response = self._minion_to_dict(minion_domain_object)
+        
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "minion_persona_updated",
+            {"minion_id": minion_id, "persona": updated_minion_data_for_response.get("persona")}
+        ))
+        asyncio.create_task(connection_manager.broadcast_service_event(
+            "minion_updated",
+            {"minion": updated_minion_data_for_response}
+        ))
+
+        return updated_minion_data_for_response.get("persona")
     
     async def send_command(
         self,
@@ -624,7 +769,9 @@ class MinionService:
             "catchphrases": minion.persona.catchphrases if hasattr(minion.persona, 'catchphrases') else [],
             "expertise_areas": minion.persona.expertise_areas if hasattr(minion.persona, 'expertise_areas') else [],
             "allowed_tools": minion.persona.allowed_tools if hasattr(minion.persona, 'allowed_tools') else [],
-            "model_name": minion.persona.model_name if hasattr(minion.persona, 'model_name') else "unknown"
+            "model_name": minion.persona.model_name if hasattr(minion.persona, 'model_name') else "unknown",
+            "temperature": minion.persona.temperature if hasattr(minion.persona, 'temperature') else 0.7,
+            "max_tokens": minion.persona.max_tokens if hasattr(minion.persona, 'max_tokens') else 4096
             # Not including minion_id here as it's at the top level of the Minion object
         }
 

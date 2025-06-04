@@ -1,7 +1,10 @@
 import { motion } from 'framer-motion'
-import { Brain, Zap, Activity, Heart, Shield, Star, Tag, Wrench, Quote } from 'lucide-react'
+import { Brain, Zap, Activity, Heart, Shield, Star, Tag, Wrench, Quote, Settings } from 'lucide-react'
 import { format } from 'date-fns'
-import { Minion } from '../../types'
+import { Minion, MinionPersona } from '../../types' // Added MinionPersona
+import { useState } from 'react' // Added useState
+import MinionConfig from '../Configuration/MinionConfig' // Added MinionConfig import
+import { minionApi } from '../../services/api/minionApi' // Updated API import
 import clsx from 'clsx'
 
 interface MinionDetailProps {
@@ -9,8 +12,34 @@ interface MinionDetailProps {
 }
 
 const MinionDetail = ({ minion }: MinionDetailProps) => {
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false)
   const mood = minion.emotional_state.mood
   const commanderOpinion = minion.emotional_state.opinion_scores['commander']
+
+  const handleSavePersona = async (updatedConfig: Partial<Minion>) => {
+    if (!minion?.minion_id || !updatedConfig.persona) return;
+    try {
+      // We only want to send the persona part for this update
+      const personaToUpdate: Partial<MinionPersona> = {
+        name: updatedConfig.persona.name,
+        base_personality: updatedConfig.persona.base_personality,
+        quirks: updatedConfig.persona.quirks,
+        catchphrases: updatedConfig.persona.catchphrases,
+        allowed_tools: updatedConfig.persona.allowed_tools,
+        expertise_areas: updatedConfig.persona.expertise_areas,
+        model_name: updatedConfig.persona.model_name,
+        temperature: updatedConfig.persona.temperature,
+        max_tokens: updatedConfig.persona.max_tokens,
+      };
+      await minionApi.updatePersona(minion.minion_id, personaToUpdate); // Use minionApi.updatePersona
+      // TODO: Add toast notification for success/failure
+      // TODO: Potentially refetch minion data or update local state
+      setIsConfigModalOpen(false);
+    } catch (error) {
+      console.error("Failed to update minion persona:", error);
+      // TODO: Add toast notification for error
+    }
+  };
   
   // Calculate mood description
   const getMoodDescription = () => {
@@ -37,12 +66,21 @@ const MinionDetail = ({ minion }: MinionDetailProps) => {
       className="bg-black/40 backdrop-blur-sm rounded-xl p-6 border border-legion-primary/20 space-y-6"
     >
       {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold text-white mb-2">{minion.persona?.name || 'Unknown Name'}</h2>
-        <p className="text-sm text-gray-400">{minion.minion_id}</p>
-        <p className="text-sm text-gray-500 mt-1">
-          Spawned {format(new Date(minion.creation_date), 'MMM d, yyyy h:mm a')}
-        </p>
+      <div className="flex justify-between items-start">
+        <div>
+          <h2 className="text-2xl font-bold text-white mb-2">{minion.persona?.name || 'Unknown Name'}</h2>
+          <p className="text-sm text-gray-400">{minion.minion_id}</p>
+          <p className="text-sm text-gray-500 mt-1">
+            Spawned {format(new Date(minion.creation_date), 'MMM d, yyyy h:mm a')}
+          </p>
+        </div>
+        <button
+          onClick={() => setIsConfigModalOpen(true)}
+          className="p-2 hover:bg-legion-primary/20 rounded-lg transition-colors text-gray-400 hover:text-legion-primary"
+          title="Configure Minion"
+        >
+          <Settings className="w-5 h-5" />
+        </button>
       </div>
       
       {/* Personality */}
@@ -185,6 +223,14 @@ const MinionDetail = ({ minion }: MinionDetailProps) => {
             ))}
           </div>
         </div>
+      )}
+
+      {isConfigModalOpen && minion && (
+        <MinionConfig
+          minion={minion}
+          onSave={handleSavePersona}
+          onCancel={() => setIsConfigModalOpen(false)}
+        />
       )}
     </motion.div>
   )

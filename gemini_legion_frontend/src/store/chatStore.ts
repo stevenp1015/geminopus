@@ -1,3 +1,4 @@
+export const COMMANDER_ID = 'COMMANDER_PRIME'; // All hail the Commander!
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import toast from 'react-hot-toast'
@@ -170,7 +171,7 @@ export const useChatStore = create<ChatState>()(
           const channel = get().channels[channelId]
           if (channel) {
             get().updateChannel(channelId, {
-              participants: [...channel.participants, minionId] // Corrected: 'members' to 'participants'
+              members: [...channel.members, minionId] // Changed participants to members
             })
           }
           
@@ -190,7 +191,7 @@ export const useChatStore = create<ChatState>()(
           const channel = get().channels[channelId]
           if (channel) {
             get().updateChannel(channelId, {
-              participants: channel.participants.filter((id: string) => id !== minionId) // Corrected: 'members' to 'participants', added type for 'id'
+              members: channel.members.filter((id: string) => id !== minionId) // Changed participants to members
             })
           }
           

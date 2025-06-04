@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Plus, X, Hash, Sparkles, BookOpen, Quote } from 'lucide-react'
-import type { MinionPersona } from '../../types/minion'
+import type { MinionPersona } from '../../types'
 
 interface PersonaEditorProps {
   persona: MinionPersona
@@ -24,7 +24,7 @@ export default function PersonaEditor({ persona, onChange }: PersonaEditorProps)
   }
 
   const removeQuirk = (index: number) => {
-    updatePersona({ quirks: persona.quirks.filter((_, i) => i !== index) })
+    updatePersona({ quirks: persona.quirks.filter((_: string, i: number) => i !== index) })
   }
 
   const addCatchphrase = () => {
@@ -35,7 +35,7 @@ export default function PersonaEditor({ persona, onChange }: PersonaEditorProps)
   }
 
   const removeCatchphrase = (index: number) => {
-    updatePersona({ catchphrases: persona.catchphrases.filter((_, i) => i !== index) })
+    updatePersona({ catchphrases: persona.catchphrases.filter((_: string, i: number) => i !== index) })
   }
 
   const addExpertise = () => {
@@ -46,7 +46,7 @@ export default function PersonaEditor({ persona, onChange }: PersonaEditorProps)
   }
 
   const removeExpertise = (index: number) => {
-    updatePersona({ expertise_areas: persona.expertise_areas.filter((_, i) => i !== index) })
+    updatePersona({ expertise_areas: persona.expertise_areas.filter((_: string, i: number) => i !== index) })
   }
 
   return (
@@ -72,7 +72,7 @@ export default function PersonaEditor({ persona, onChange }: PersonaEditorProps)
           <label className="text-sm font-medium text-gray-300">Personality Quirks</label>
         </div>
         <div className="space-y-2 mb-3">
-          {persona.quirks.map((quirk, i) => (
+          {persona.quirks.map((quirk: string, i: number) => (
             <div key={i} className="flex items-center space-x-2 bg-white/5 px-3 py-2 rounded-lg">
               <span className="flex-1 text-sm text-gray-300">{quirk}</span>
               <button
@@ -110,7 +110,7 @@ export default function PersonaEditor({ persona, onChange }: PersonaEditorProps)
           <label className="text-sm font-medium text-gray-300">Catchphrases</label>
         </div>
         <div className="space-y-2 mb-3">
-          {persona.catchphrases.map((phrase, i) => (
+          {persona.catchphrases.map((phrase: string, i: number) => (
             <div key={i} className="flex items-center space-x-2 bg-white/5 px-3 py-2 rounded-lg">
               <span className="flex-1 text-sm text-gray-300 italic">"{phrase}"</span>
               <button
@@ -148,7 +148,7 @@ export default function PersonaEditor({ persona, onChange }: PersonaEditorProps)
           <label className="text-sm font-medium text-gray-300">Areas of Expertise</label>
         </div>
         <div className="space-y-2 mb-3">
-          {persona.expertise_areas.map((area, i) => (
+          {persona.expertise_areas.map((area: string, i: number) => (
             <div key={i} className="flex items-center space-x-2 bg-white/5 px-3 py-2 rounded-lg">
               <Hash className="w-3 h-3 text-legion-primary" />
               <span className="flex-1 text-sm text-gray-300">{area}</span>
@@ -196,6 +196,45 @@ export default function PersonaEditor({ persona, onChange }: PersonaEditorProps)
           <option value="gemini-2.5-flash-preview-04-17">Gemini 2.5 Flash Preview 04-17</option>
           <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite</option>
         </select>
+      </div>
+
+      {/* Temperature */}
+      <div className="mt-4">
+        <label htmlFor="temperature" className="block text-sm font-medium text-gray-300 mb-2">
+          Temperature
+        </label>
+        <input
+          type="number"
+          id="temperature"
+          name="temperature"
+          value={persona.temperature ?? 0.7}
+          onChange={(e) => updatePersona({ temperature: parseFloat(e.target.value) })}
+          step="0.1"
+          min="0"
+          max="2"
+          className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg
+                   text-white placeholder-gray-400 focus:border-legion-primary/50 focus:outline-none"
+        />
+        <p className="text-xs text-gray-500 mt-1">Controls randomness. Lower is more deterministic. (0.0 - 2.0)</p>
+      </div>
+
+      {/* Max Tokens */}
+      <div className="mt-4">
+        <label htmlFor="max_tokens" className="block text-sm font-medium text-gray-300 mb-2">
+          Max Tokens
+        </label>
+        <input
+          type="number"
+          id="max_tokens"
+          name="max_tokens"
+          value={persona.max_tokens ?? 4096}
+          onChange={(e) => updatePersona({ max_tokens: parseInt(e.target.value, 10) })}
+          step="1"
+          min="1"
+          className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg
+                   text-white placeholder-gray-400 focus:border-legion-primary/50 focus:outline-none"
+        />
+        <p className="text-xs text-gray-500 mt-1">Maximum number of tokens to generate in the response.</p>
       </div>
     </div>
   )

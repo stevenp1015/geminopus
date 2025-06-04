@@ -10,6 +10,8 @@ export interface MinionPersona {
   allowed_tools: string[]
   expertise_areas: string[]
   model_name: string
+  temperature?: number
+  max_tokens?: number
 }
 
 export interface MoodVector {
@@ -66,7 +68,7 @@ export interface Channel {
   name: string
   type: ChannelType
   description?: string
-  participants: string[]
+  members: string[] // Changed from participants to align with backend ChannelResponse
   created_at: string
   created_by: string
   metadata?: Record<string, any>
@@ -78,6 +80,7 @@ export interface Message {
   channel_id: string
   sender_id: string
   sender_type: 'minion' | 'user' | 'system'
+  type: 'CHAT' | 'SYSTEM' | 'TASK' | 'STATUS' | 'EMOTIONAL' // Added to align with backend MessageTypeEnum + observed 'EMOTIONAL'
   content: string
   timestamp: string
   priority?: MessagePriority

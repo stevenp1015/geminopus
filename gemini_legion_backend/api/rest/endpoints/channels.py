@@ -18,7 +18,8 @@ from ..schemas import (
     MessageResponse,
     MessagesListResponse,
     OperationResponse,
-    MessageTypeEnum
+    MessageTypeEnum,
+    AddMemberRequest # Added for add member endpoint
 )
 from ....core.dependencies import get_channel_service
 from ....core.application.services import ChannelService
@@ -53,7 +54,7 @@ def convert_channel_to_response(channel_data: dict) -> ChannelResponse:
         description=str(channel_data.get("description", "")) if channel_data.get("description") is not None else None,
         type=channel_type, # Set the new type field
         members=member_ids,
-        is_private=is_private, # Keep is_private as it's in the schema for now
+        # is_private is no longer part of ChannelResponse schema, derived into 'type'
         created_at=str(channel_data.get("created_at", datetime.now().isoformat()))
         # message_count and last_activity are not in the current ChannelResponse Pydantic model
     )
@@ -72,7 +73,7 @@ def convert_message_to_response(message_data: dict) -> MessageResponse:
     message_type = message_data.get("message_type", MessageType.CHAT)
     
     return MessageResponse(
-        id=message_data["message_id"],
+        message_id=message_data["message_id"], # Changed from id to message_id
         sender=message_data["sender_id"],
         content=message_data["content"],
         timestamp=message_data["timestamp"].isoformat() if isinstance(message_data["timestamp"], datetime) else message_data["timestamp"],
@@ -176,56 +177,58 @@ async def delete_channel(
         raise HTTPException(status_code=500, detail="Error deleting channel")
 
 
-@router.post("/{channel_id}/join", response_model=OperationResponse)
-async def join_channel(
+@router.post("/{channel_id}/members", response_model=OperationResponse)
+async def add_channel_member( # Renamed from join_channel
     channel_id: str,
-    minion_id: str,
+    request: AddMemberRequest, # Changed to use request body
     channel_service: ChannelService = Depends(get_channel_service)
 ) -> OperationResponse:
-    """Add a minion to a channel"""
+    """Add a minion to a channel."""
     try:
-        success = await channel_service.add_member(channel_id, minion_id)
+        success = await channel_service.add_member(channel_id, request.minion_id)
         
         if not success:
-            raise HTTPException(status_code=404, detail="Channel not found")
+            # Consider more specific errors: channel not found vs minion not found vs already member
+            raise HTTPException(status_code=404, detail="Channel or Minion not found, or member already exists.")
         
         return OperationResponse(
-            status="joined",
+            status="member_added",
             id=channel_id,
-            message=f"Minion {minion_id} joined channel!   . .",
+            message=f"Minion {request.minion_id} added to channel {channel_id}.",
             timestamp=datetime.now().isoformat()
         )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error joining channel: {e}")
-        raise HTTPException(status_code=500, detail="Error joining channel")
+        logger.error(f"Error adding member {request.minion_id} to channel {channel_id}: {e}")
+        raise HTTPException(status_code=500, detail="Error adding member to channel")
 
 
-@router.post("/{channel_id}/leave", response_model=OperationResponse)
-async def leave_channel(
+@router.delete("/{channel_id}/members/{minion_id}", response_model=OperationResponse)
+async def remove_channel_member( # Renamed from leave_channel and changed method to DELETE
     channel_id: str,
-    minion_id: str,
+    minion_id: str, # Now a path parameter
     channel_service: ChannelService = Depends(get_channel_service)
 ) -> OperationResponse:
-    """Remove a minion from a channel"""
+    """Remove a minion from a channel."""
     try:
         success = await channel_service.remove_member(channel_id, minion_id)
         
         if not success:
-            raise HTTPException(status_code=404, detail="Channel not found")
+            # Consider more specific errors
+            raise HTTPException(status_code=404, detail="Channel or Minion not found, or member not in channel.")
         
         return OperationResponse(
-            status="left",
-            id=channel_id,
-            message=f"Minion {minion_id} left channel",
+            status="member_removed",
+            id=channel_id, # Or perhaps minion_id to indicate who was removed
+            message=f"Minion {minion_id} removed from channel {channel_id}.",
             timestamp=datetime.now().isoformat()
         )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error leaving channel: {e}")
-        raise HTTPException(status_code=500, detail="Error leaving channel")
+        logger.error(f"Error removing member {minion_id} from channel {channel_id}: {e}")
+        raise HTTPException(status_code=500, detail="Error removing member from channel")
 
 
 @router.get("/{channel_id}/messages", response_model=MessagesListResponse)

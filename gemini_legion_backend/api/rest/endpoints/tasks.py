@@ -51,7 +51,7 @@ def convert_task_to_response(task_data: dict) -> TaskResponse:
     priority = task_data.get("priority", TaskPriority.MEDIUM)
     
     return TaskResponse(
-        id=task_data["task_id"],
+        task_id=task_data["task_id"], # Changed from id to task_id
         title=task_data["title"],
         description=task_data["description"],
         status=status_map.get(status, TaskStatusEnum.PENDING),

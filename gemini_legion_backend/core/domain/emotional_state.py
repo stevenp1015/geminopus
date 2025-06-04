@@ -4,10 +4,11 @@ Core Emotional State for Minions
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any # Added Any
+from dataclasses import asdict # Added asdict
 from .base_types import EntityType
 from .mood import MoodVector
-from .opinion import OpinionScore
+from .opinion import OpinionScore, OpinionEvent # Added OpinionEvent
     
 
 @dataclass
@@ -137,10 +138,14 @@ class EmotionalState:
             "stress_level": self.stress_level,
             "opinion_scores": {
                 entity_id: {
+                    "entity_type": score.entity_type.value if score.entity_type else None, # Assuming EntityType is an Enum
                     "trust": score.trust,
                     "respect": score.respect,
                     "affection": score.affection,
-                    "overall_sentiment": score.overall_sentiment
+                    "interaction_count": score.interaction_count,
+                    "last_interaction_timestamp": score.last_interaction.isoformat() if score.last_interaction else None,
+                    "notable_events": [asdict(event) for event in score.notable_events],
+                    "overall_sentiment": score.overall_sentiment # This is a property, will be computed
                 }
                 for entity_id, score in self.opinion_scores.items()
             },

@@ -116,6 +116,9 @@ class MinionAgent(LlmAgent):
         self._memory_consolidation_task = asyncio.create_task(
             self._memory_consolidation_loop()
         )
+
+        # Initialize a lock for synchronizing access to agent's state
+        self._state_lock = asyncio.Lock()
         
     def _build_instruction(self, persona: MinionPersona, emotional_engine: EmotionalEngine) -> str:
         """
@@ -203,9 +206,10 @@ class MinionAgent(LlmAgent):
         This method adds emotional state tracking and memory management
         to the standard LLM interaction.
         """
-        # Update working memory with new input
-        experience = Experience(
-            timestamp=datetime.now(),
+        async with self._state_lock:
+            # Update working memory with new input
+            experience = Experience(
+                timestamp=datetime.now(),
             content=message,
             context={'source': 'user_input'},
             significance=0.5,  # Base significance
@@ -277,7 +281,8 @@ class MinionAgent(LlmAgent):
             await self.consider_autonomous_communication(communication_context)
         
         return response
-    
+    # End of _state_lock block for think()
+
     def _enhance_context(
         self,
         base_context: Optional[InvocationContext],
@@ -413,10 +418,11 @@ class MinionAgent(LlmAgent):
     
     async def _update_emotional_state(self, session: Session, message: str, response: str):
         """Update and persist emotional state to session"""
-        # Get current state
-        current_state = await self._load_emotional_state(session) or self.emotional_engine.get_current_state()
-        
-        # Analyze interaction
+        async with self._state_lock:
+            # Get current state
+            current_state = await self._load_emotional_state(session) or self.emotional_engine.get_current_state()
+            
+            # Analyze interaction
         emotional_impact = await self._analyze_emotional_impact(message, response)
         
         # Update state
@@ -428,9 +434,10 @@ class MinionAgent(LlmAgent):
                 description=f"Interaction: {message[:50]}..."
             )
         
-        # Save updated state
-        session.set('emotional_state', current_state.to_snapshot())
-    
+            # Save updated state
+            session.set('emotional_state', current_state.to_snapshot())
+    # End of _state_lock block for _update_emotional_state()
+
     async def _update_memories(self, session: Session, message: str, response: str):
         """Update memory systems based on interaction"""
         # For now, just ensure working memory is updated

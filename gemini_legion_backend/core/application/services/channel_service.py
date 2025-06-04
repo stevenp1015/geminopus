@@ -739,24 +739,37 @@ class ChannelService:
         converts it to a dict, and broadcasts via WebSocket connection_manager.
         """
         try:
-            logger.info(f"ChannelService: _websocket_broadcaster_callback for channel '{routed_message.channel}' from '{routed_message.sender}'.")
+            logger.info(f"ChannelService: _websocket_broadcaster_callback received message for channel '{routed_message.channel}' from '{routed_message.sender}'.")
+
+            # 1. Convert ConversationalMessage to a domain Message object for persistence.
+            # Ensure a unique message_id. Using a combination of elements for now.
+            # The persistence layer (message_repo.save) should handle potential duplicates if message_id is a primary key.
+            domain_message = Message(
+                message_id=f"msg_{routed_message.channel}_{routed_message.timestamp.timestamp()}_{routed_message.sender}_{abs(hash(routed_message.content))%10000}",
+                channel_id=routed_message.channel,
+                sender_id=routed_message.sender,
+                content=routed_message.content,
+                message_type=MessageType.CHAT, # Defaulting to CHAT for inter-minion messages via this path.
+                                               # Could be enhanced if ConversationalMessage carries more type info.
+                timestamp=routed_message.timestamp,
+                metadata=routed_message.personality_hints or {}
+            )
+
+            # 2. Add the domain Message to the buffer for persistence.
+            async with self._buffer_lock:
+                self.message_buffer.append(domain_message)
+            logger.info(f"ChannelService: Message from '{routed_message.sender}' in channel '{routed_message.channel}' queued for persistence via _websocket_broadcaster_callback.")
+
+            # 3. Convert the domain Message to a dictionary suitable for WebSocket broadcast
+            #    using the existing _message_to_dict helper.
+            message_dict_for_ws = self._message_to_dict(domain_message)
             
-            # Convert ConversationalMessage to the dict format expected by frontend clients
-            message_dict_for_ws = {
-                "id": f"msg_{routed_message.channel}_{routed_message.timestamp.timestamp()}_{routed_message.sender}",
-                "channel_id": routed_message.channel,
-                "sender_id": routed_message.sender,
-                "content": routed_message.content,
-                "message_type": MessageType.CHAT.value, # Assuming CHAT type for minion messages via this path
-                "timestamp": routed_message.timestamp.isoformat(),
-                "metadata": routed_message.personality_hints or {} # Pass personality_hints as metadata
-            }
-            
+            # 4. Broadcast the message via WebSocket.
             await connection_manager.broadcast_service_event(
-                "message_sent", # This should match the event frontend listens for (same as ChannelService.send_message)
+                "message_sent",
                 {"channel_id": routed_message.channel, "message": message_dict_for_ws}
             )
-            logger.info(f"ChannelService: Successfully broadcast 'message_sent' via WebSocket for channel '{routed_message.channel}'.")
+            logger.info(f"ChannelService: Successfully broadcast 'message_sent' (from internal comm_system) via WebSocket for channel '{routed_message.channel}'.")
         except Exception as e:
             logger.error(f"ChannelService: Error in _websocket_broadcaster_callback: {e}", exc_info=True)
 

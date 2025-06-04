@@ -74,7 +74,7 @@ ENV/
 adk-docs/
 GeminiLegion-kapa/
 llmchat/
-docs/
+olddocs/
 
 # User-specified files
 gemcoderchatlol.md

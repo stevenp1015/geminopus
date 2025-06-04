@@ -19,8 +19,8 @@ trap cleanup INT TERM
 
 # Start backend server
 echo "📡 Starting Backend Server..."
-cd gemini_legion_backend
-python main.py &
+cd geminopus
+python -m gemini_legion_backend.main &
 BACKEND_PID=$!
 echo "Backend PID: $BACKEND_PID"
 
@@ -38,8 +38,8 @@ echo "================================"
 echo "✅ Gemini Legion is running!"
 echo ""
 echo "🌐 Frontend: http://localhost:5173"
-echo "🔌 Backend:  http://localhost:8888"
-echo "📚 API Docs: http://localhost:8888/docs"
+echo "🔌 Backend:  http://localhost:8000"
+echo "📚 API Docs: http://localhost:8000/api/docs"
 echo ""
 echo "Press Ctrl+C to stop all servers"
 echo "================================"
