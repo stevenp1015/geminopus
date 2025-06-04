@@ -3,7 +3,7 @@ import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import toast from 'react-hot-toast'
 import { channelApi } from '../services/api'
-import type { Channel, Message } from '../types'
+import type { Channel, Message } from '@/types'
 
 interface ChatState {
   // State
@@ -128,6 +128,7 @@ export const useChatStore = create<ChatState>()(
       },
       
       createChannel: async (name: string, type: 'public' | 'private', memberIds?: string[]) => {
+        console.log(`[ChatStore] createChannel CALLED. Name: "${name}", Type: "${type}", Members:`, memberIds);
         try {
           const channel = await channelApi.create({
             name,
@@ -147,10 +148,12 @@ export const useChatStore = create<ChatState>()(
       },
       
       sendMessage: async (channelId: string, senderId: string, content: string) => {
+        console.log(`[ChatStore] sendMessage CALLED. Channel ID: ${channelId}, Sender ID: ${senderId}, Content: "${content}"`);
         try {
           // Send via channel endpoint
           const message = await channelApi.sendMessage(channelId, {
-            sender_id: senderId,
+            sender: senderId,      // Changed from sender_id
+            channel_id: channelId, // Added channel_id
             content
           })
           

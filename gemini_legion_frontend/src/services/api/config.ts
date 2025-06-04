@@ -27,7 +27,7 @@ export const API_ENDPOINTS = {
     get: (id: string) => `/api/channels/${id}`,
     create: '/api/channels/',
     messages: (id: string) => `/api/channels/${id}/messages`,
-    sendMessage: (id: string) => `/api/channels/${id}/messages`,
+    sendMessage: (id: string) => `/api/channels/${id}/send`,
     members: (id: string) => `/api/channels/${id}/members`,
     addMember: (id: string) => `/api/channels/${id}/members`,
     removeMember: (id: string, minionId: string) => `/api/channels/${id}/members/${minionId}`,

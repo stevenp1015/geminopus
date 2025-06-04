@@ -3,7 +3,7 @@
  */
 
 import { API_BASE_URL, API_ENDPOINTS, getHeaders, handleAPIResponse } from './config'
-import type { Channel, Message } from '../../types'
+import type { Channel, Message } from '@/types'
 
 export const channelApi = {
   /**
@@ -55,6 +55,7 @@ export const channelApi = {
     channel_type: 'public' | 'private' | 'direct' // Keep for input clarity
     members?: string[]
   }): Promise<Channel> {
+    console.log('[channelApi] create CALLED. Data:', data); // Log 1: Entry and raw data
     // Transform channel_type to is_private for the backend
     const is_private = data.channel_type === 'private' || data.channel_type === 'direct';
     const payload = {
@@ -63,6 +64,7 @@ export const channelApi = {
       members: data.members,
       is_private: is_private,
     };
+    console.log('[channelApi] create: Attempting to POST to create channel. Payload:', payload); // Log 2: Final payload
     const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.channels.create}`, {
       method: 'POST',
       headers: getHeaders(),
@@ -91,12 +93,15 @@ export const channelApi = {
   /**
    * Send a message to a channel
    */
-  async sendMessage(channelId: string, data: {
-    sender_id: string
+  async sendMessage(channelId: string, data: { // channelId from path is still used for URL construction
+    sender: string       // To match backend Pydantic model: SendMessageRequest
+    channel_id: string // To match backend Pydantic model (even if redundant with path)
     content: string
-    message_type?: 'text' | 'system' | 'event'
+    message_type?: 'text' | 'system' | 'event' // Keep for potential future use, not in current backend model
   }): Promise<Message> {
-    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.channels.sendMessage(channelId)}`, {
+    const url = `${API_BASE_URL}${API_ENDPOINTS.channels.sendMessage(channelId)}`;
+    console.log('[channelApi] sendMessage: Attempting to POST to URL:', url);
+    const response = await fetch(url, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(data),

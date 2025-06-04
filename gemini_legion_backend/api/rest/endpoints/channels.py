@@ -66,18 +66,18 @@ def convert_message_to_response(message_data: dict) -> MessageResponse:
     type_map = {
         MessageType.CHAT: MessageTypeEnum.CHAT,
         MessageType.SYSTEM: MessageTypeEnum.SYSTEM,
-        MessageType.TASK: MessageTypeEnum.TASK,
-        MessageType.EMOTIONAL: MessageTypeEnum.EMOTIONAL
+        MessageType.TASK: MessageTypeEnum.TASK
+        # MessageType.EMOTIONAL: MessageTypeEnum.EMOTIONAL # Removed as MessageType.EMOTIONAL doesn't exist in domain enum
     }
     
-    message_type = message_data.get("message_type", MessageType.CHAT)
+    message_type_from_domain = message_data.get("message_type", MessageType.CHAT) # Renamed for clarity
     
     return MessageResponse(
         message_id=message_data["message_id"], # Changed from id to message_id
         sender=message_data["sender_id"],
         content=message_data["content"],
         timestamp=message_data["timestamp"].isoformat() if isinstance(message_data["timestamp"], datetime) else message_data["timestamp"],
-        type=type_map.get(message_type, MessageTypeEnum.CHAT),
+        type=type_map.get(message_type_from_domain, MessageTypeEnum.CHAT),
         channel_id=message_data["channel_id"],
         metadata=message_data.get("metadata", {})
     )

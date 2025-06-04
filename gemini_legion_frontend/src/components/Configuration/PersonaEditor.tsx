@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Plus, X, Hash, Sparkles, BookOpen, Quote } from 'lucide-react'
-import type { MinionPersona } from '../../types'
+import type { MinionPersona } from '@/types'
 
 interface PersonaEditorProps {
   persona: MinionPersona

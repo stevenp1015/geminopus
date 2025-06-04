@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Send, Zap, Heart, AlertCircle, Sparkles } from 'lucide-react'
-import { useChatStore, COMMANDER_ID } from '../../store/chatStore'
+import { useChatStore, COMMANDER_ID } from '@/store/chatStore'
 import { useLegionStore } from '../../store/legionStore' // Keep for personality hints
 
 interface MessageInputProps {
@@ -37,6 +37,7 @@ const MessageInput = ({ channelId, currentMinionId }: MessageInputProps) => {
     
     try {
       // Call sendMessage from chatStore with channelId, COMMANDER_ID, and message
+      console.log(`[MessageInput] handleSend: Preparing to call sendChatMessage. Channel ID: ${channelId}, Sender ID: ${COMMANDER_ID}, Message: "${message.trim()}"`);
       await sendChatMessage(
         channelId,
         COMMANDER_ID,
@@ -136,7 +137,7 @@ const MessageInput = ({ channelId, currentMinionId }: MessageInputProps) => {
         >
           <p className="text-xs text-gray-400 mb-2">Current personality traits:</p>
           <div className="flex flex-wrap gap-2">
-            {currentMinion.persona.quirks.slice(0, 3).map((quirk, i) => (
+            {currentMinion.persona.quirks.slice(0, 3).map((quirk: string, i: number) => (
               <span key={i} className="text-xs bg-legion-primary/20 text-legion-primary px-2 py-1 rounded">
                 {quirk.split(' ').slice(0, 3).join(' ')}...
               </span>
